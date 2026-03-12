@@ -1,23 +1,80 @@
 # OpenSession
 
-OpenSession is a lightweight session continuity layer for teams and agents.
+OpenSession is an **Agent Execution Continuity OS** for teams running AI-assisted delivery.
 
-It helps you:
-- start and resume work sessions across environments,
-- keep a durable event timeline in Supabase,
-- inspect progress via CLI (and viewer/TUI as they mature),
-- inspect progress via CLI, read-only WebUI, and keyboard-driven ops TUI,
-- avoid losing context when runtime/session changes.
+It gives operators one continuity layer across CLI, automation, and lightweight web/TUI views so work does not fragment when sessions, terminals, or contributors change.
 
----
+## Positioning
 
-## 1) Quick Start (2 minutes)
+OpenSession is built for one specific problem: **execution continuity under interruption**.
+
+When teams run coding agents and humans together, context breaks in predictable places:
+- shell sessions die,
+- ownership changes mid-task,
+- updates are spread across chat/tools,
+- handoffs lose the exact action chain.
+
+OpenSession keeps execution state and event history in Supabase and exposes that state through a simple CLI-first operator surface.
+
+## Who This Is For
+
+- Small engineering teams shipping with AI agents daily.
+- Operators managing multiple active tasks and handoffs.
+- Founders/PMs who need execution visibility without opening every terminal.
+
+## Core Pains We Solve
+
+- Losing task context between sessions or machines.
+- Weak handoff quality between human and agent shifts.
+- No durable timeline of intent -> action -> artifact.
+- Difficult weekly reporting of operational throughput.
+
+## Product Differentiators
+
+- Continuity-first model (not just chat logs).
+- CLI-native workflow with read-only web visibility.
+- Durable event timeline in Supabase with project/session structure.
+- Built-in operational commands (`status`, `log`, `report`, `ops`) for day-to-day execution.
+
+## MVP Boundaries
+
+### Included in MVP
+
+- Supabase-backed project/session/event persistence.
+- CLI for init, sync, start, resume, status, log, report.
+- Read-only viewer for session/event inspection.
+- Keyboard-driven ops TUI for operator loops.
+- Webhook ingestion + outbound automation hooks.
+
+### Not Included in MVP
+
+- Full visual workflow builder.
+- Advanced RBAC/enterprise auth model.
+- Native billing/invoice automation.
+- Multi-region data residency controls.
+
+## Data Model (MVP)
+
+OpenSession expects these tables in `public` schema:
+- `projects`
+- `sessions`
+- `session_events`
+
+Minimal conceptual model:
+
+- `projects`: stable workspace key and metadata.
+- `sessions`: active/ended execution containers tied to actor + project.
+- `session_events`: ordered timeline entries (intent, action, artifact, webhook, status changes).
+
+## Quick Start
 
 ### Prerequisites
-- Node.js 18+
-- A Supabase project
 
-### Run
+- Node.js 18+
+- A Supabase project with schema applied
+
+### Install/Run
+
 ```bash
 npx @online5880/opensession init
 npx @online5880/opensession sync --project demo
@@ -27,92 +84,52 @@ npx @online5880/opensession log
 npx @online5880/opensession ops --project-key demo
 ```
 
-`init` will ask for:
-- Supabase URL (`https://<project-ref>.supabase.co`)
-- Supabase publishable/anon key (`sb_publishable_...`)
+`init` asks for:
+- Supabase URL: `https://<project-ref>.supabase.co`
+- Supabase key: `sb_publishable_...`
 
----
+## CLI Command Surface
 
-## 2) Core Commands
+- `init`: initialize local config + verify connection
+- `login`: update stored Supabase credentials
+- `sync --project <key>`: ensure local/remote project linkage
+- `start --project-key <key> --actor <name>`: create active session
+- `resume --session-id <id> --actor <name>`: continue prior session
+- `status --project-key <key>`: active session overview
+- `log --session-id <id> --limit <n>`: event timeline query
+- `report --project-key <key> --days 28 --weeks 6`: KPI + weekly trend summary
+- `viewer --host 127.0.0.1 --port 5880`: read-only web viewer
+- `ops --project-key <key>`: terminal operations console
+- `webhook-server --project-key <key> --port 8788`: inbound event ingestion
+- `self-update`: check/install latest package version
+- `config-path`: print local config location
 
-### `init`
-Initialize local config and validate Supabase connection.
+## Standard CLI Flows
+
+### Flow 1: First-time bootstrap
 
 ```bash
 npx @online5880/opensession init
-```
-
-### `sync`
-Sync local state with remote project.
-
-```bash
 npx @online5880/opensession sync --project demo
-```
-
-### `start`
-Start a new active session.
-
-```bash
 npx @online5880/opensession start --project-key demo --actor mane
 ```
 
-### `resume`
-Resume an existing session by ID.
+### Flow 2: Resume interrupted execution
 
 ```bash
 npx @online5880/opensession resume --session-id <session-id> --actor mane
-```
-
-### `status`
-Show active sessions + sync metadata.
-
-```bash
 npx @online5880/opensession status --project-key demo
-```
-
-### `log`
-Read recent events in a session.
-
-```bash
 npx @online5880/opensession log --session-id <session-id> --limit 50
 ```
 
-### `self-update`
-Check/install latest global version.
-
-```bash
-npx @online5880/opensession self-update
-```
-
-### `viewer`
-Run read-only web viewer locally.
-
-```bash
-npx @online5880/opensession viewer --host 127.0.0.1 --port 5880
-
-Viewer query controls:
-- `sessionStatus=all|active|ended`
-- `actor=<substring>`
-- `tail=<1..500>`
-- `refresh=<0..60>`
-
-### `ops`
-Run terminal ops console (TUI) with shortcuts.
+### Flow 3: Operator monitoring loop
 
 ```bash
 npx @online5880/opensession ops --project-key demo --refresh-ms 5000 --limit 50
+npx @online5880/opensession report --project-key demo --days 28 --weeks 6
 ```
 
-Shortcuts:
-- `j` / `k`: move selected session
-- `r`: refresh now
-- `l`: cycle event tail limit (`20 -> 50 -> 100 -> 200`)
-- `a`: toggle active-only/all sessions
-- `q`: quit
-```
-
-### `webhook-server`
-Run inbound webhook ingestion server + automation forwarding.
+### Flow 4: External event ingestion
 
 ```bash
 npx @online5880/opensession webhook-server --project-key demo --port 8788
@@ -121,20 +138,40 @@ curl -X POST http://127.0.0.1:8788/webhooks/event \
   -d '{"source":"github","eventType":"github.push","projectKey":"demo","payload":{"ref":"refs/heads/main"}}'
 ```
 
-### `report`
-Generate rolling KPI + weekly trend report.
+## Pricing Draft (Working)
 
-```bash
-npx @online5880/opensession report --project-key demo --days 28 --weeks 6
-# JSON output
-npx @online5880/opensession report --project-key demo --json
-```
+This is a draft packaging model for validation and may change.
 
----
+- `Starter` (individual / trial): $0-$19/mo target
+  - 1 workspace
+  - basic CLI continuity + viewer
+- `Team` (core ICP): $99/mo target
+  - up to 10 active operators
+  - full CLI + ops + report + webhook automation
+- `Scale` (design partner): custom pricing
+  - custom limits, onboarding support, SLA discussion
 
-## 3) Config Location
+## 30-Day Plan (Execution)
 
-Local config file:
+### Days 1-10
+
+- Stabilize onboarding: reduce `init` + schema friction.
+- Finalize README/landing positioning consistency.
+- Improve error messages around Supabase auth/schema checks.
+
+### Days 11-20
+
+- Harden WebUI and Ops TUI for daily operator use.
+- Add clearer handoff packet/event labeling conventions.
+- Expand report outputs for weekly decision-making.
+
+### Days 21-30
+
+- Validate pricing assumptions with pilot users.
+- Ship 2-3 end-to-end demos (interrupt/resume/handoff scenarios).
+- Prepare MVP launch checklist and publish narrative docs.
+
+## Config Path
 
 ```bash
 npx @online5880/opensession config-path
@@ -144,37 +181,22 @@ Default location:
 - macOS/Linux: `~/.opensession/config.json`
 - Windows: `%USERPROFILE%\\.opensession\\config.json`
 
----
+## Common Errors
 
-## 4) Supabase Setup Notes
+### `PGRST205` table not found
 
-OpenSession expects these tables in `public` schema:
-- `projects`
-- `sessions`
-- `session_events`
+Cause: schema not applied to Supabase project.
 
-If you see `PGRST205` (`table ... not found`), your schema is not applied yet.
-
-Current safe recovery:
-1. Apply schema SQL (once per Supabase project)
-2. Re-run `init` and `sync`
-
-(Automatic bootstrap flow is being hardened in ongoing Phase work.)
-
----
-
-## 5) Common Errors
-
-### `PGRST205` (table not found)
-Cause: schema missing.
-Fix: apply schema SQL once, then run:
+Fix:
 ```bash
 npx @online5880/opensession init
 npx @online5880/opensession sync --project demo
 ```
 
 ### `Missing project key`
-Cause: no project specified yet.
+
+Cause: project not selected.
+
 Fix:
 ```bash
 npx @online5880/opensession sync --project demo
@@ -182,97 +204,13 @@ npx @online5880/opensession sync --project demo
 npx @online5880/opensession status --project-key demo
 ```
 
-### Auth/network errors
-Cause: invalid URL/key, DNS, or connectivity.
-Fix:
-- confirm URL is `https://<project-ref>.supabase.co`
-- confirm key starts with `sb_publishable_`
-- retry `init`
+### Auth/network failures
 
----
+- Confirm URL is `https://<project-ref>.supabase.co`
+- Confirm key format is valid
+- Re-run `init` or `login`
 
-## 6) Operational Tips
-
-- Prefer small, frequent commits and push often.
-- Keep updates reproducible: include command and output snippets.
-- For remote demo links in this environment, share Tailscale URL (not localhost).
-- Fast aliases: `st(start)`, `rs(resume)`, `ps(status)`, `lg(log)`, `sy(sync)`, `vw(viewer)`.
-
----
-
-## 6.1) Integration/Automation Rules
-
-`webhook-server` can ingest external events, append them to sessions, and forward matched events.
-
-### Endpoint
-- `POST /webhooks/event`
-- Optional auth header: `x-opensession-secret: <secret>` when `--secret` (or `OPENSESSION_WEBHOOK_SECRET`) is set
-
-### Request body
-```json
-{
-  "source": "github",
-  "eventType": "github.push",
-  "projectKey": "demo",
-  "actor": "github-bot",
-  "sessionId": "optional-existing-session-id",
-  "payload": {
-    "ref": "refs/heads/main"
-  }
-}
-```
-
-### Automation config file (JSON)
-Use `--automation-file ./automation.json`:
-
-```json
-{
-  "webhooks": [
-    {
-      "url": "https://hooks.slack.com/services/XXX/YYY/ZZZ",
-      "eventTypes": ["github.push"],
-      "source": "github"
-    }
-  ],
-  "rules": [
-    {
-      "name": "telegram-on-critical",
-      "when": { "eventType": "alert.critical" },
-      "actions": [
-        {
-          "type": "webhook",
-          "url": "https://api.telegram.org/bot<TOKEN>/sendMessage"
-        }
-      ]
-    }
-  ]
-}
-```
-
----
-
-## 7) Versioning
-
-- Package: `@online5880/opensession`
-- Suggested release flow:
-  1. update version
-  2. changelog/checkpoint note
-  3. publish
-  4. smoke-test via `npx`
-
----
-
-## 8) Project Status
-
-OpenSession is actively evolving.
-Current focus:
-- WebUI/TUI hardening
-- bootstrap reliability
-- docs and operator UX polish
-
-
-
-## Short Alias (recommended)
+## Short Alias
 
 ```bash
 alias opss='npx -y @online5880/opensession'
@@ -283,4 +221,4 @@ opss status --project-key demo
 opss log
 ```
 
-When published with the `opss` bin, you can also use `npx opss ...` directly.
+If published with the `opss` bin, you can also run `npx opss ...`.
