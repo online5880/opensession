@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 
 export function getClient(config) {
   if (!config.supabaseUrl || !config.supabaseAnonKey) {
-    throw new Error('Supabase is not configured. Run `opensession init --url <url> --anon-key <key>`.');
+    throw new Error('Supabase is not configured. Run `opensession init` first.');
   }
 
   return createClient(config.supabaseUrl, config.supabaseAnonKey, {
@@ -72,6 +72,16 @@ export async function appendEvent(client, sessionId, type, payload = {}) {
   }
 
   return data;
+}
+
+export async function validateConnection(supabaseUrl, supabaseAnonKey) {
+  const client = createClient(supabaseUrl, supabaseAnonKey, {
+    auth: { persistSession: false }
+  });
+  const { error } = await client.from('projects').select('id').limit(1);
+  if (error) {
+    throw error;
+  }
 }
 
 export async function getSession(client, sessionId) {

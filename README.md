@@ -4,18 +4,20 @@ MVP CLI for session continuity with Supabase.
 
 ## Commands
 
-- `init --url --anon-key [--project-key] [--actor]`
+- `init [--project-key] [--actor]` (프롬프트로 URL/ANON KEY 입력)
 - `login --actor`
 - `start --project-key [--project-name] [--actor]`
 - `resume --session-id [--actor]`
 - `status [--project-key]`
+- `sync --project <name>`
 - `log [--session-id] [--limit]`
 
 ## Quick start
 
 ```bash
 npm install
-node src/cli.js init --url "$SUPABASE_URL" --anon-key "$SUPABASE_ANON_KEY" --project-key demo --actor mane
+node src/cli.js init --project-key demo --actor mane
+node src/cli.js sync --project demo
 node src/cli.js start --project-key demo
 node src/cli.js status
 node src/cli.js log
