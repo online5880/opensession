@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
+import readline from 'node:readline';
 import { createInterface } from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 import { spawn } from 'node:child_process';
@@ -318,6 +319,234 @@ async function readAutomationConfigFromFile(pathValue) {
   return parsed;
 }
 
+function toNumberInRange(raw, fallback, min, max) {
+  const value = Number.parseInt(String(raw ?? ''), 10);
+  if (!Number.isInteger(value)) {
+    return fallback;
+  }
+  if (value < min) {
+    return min;
+  }
+  if (value > max) {
+    return max;
+  }
+  return value;
+}
+
+function renderOpsDashboard({
+  projectKey,
+  sessions,
+  selectedIndex,
+  selectedSession,
+  events,
+  tailLimit,
+  showAllSessions,
+  refreshMs,
+  lastUpdatedAt,
+  lastError
+}) {
+  const lines = [];
+  lines.push('\x1Bc');
+  lines.push(`OpenSession Ops Console | project=${projectKey}`);
+  lines.push(
+    `Shortcuts: [j/k] move [r] refresh [l] tail-limit [a] active/all [q] quit | refresh=${refreshMs}ms tail=${tailLimit} scope=${
+      showAllSessions ? 'all' : 'active'
+    }`
+  );
+  lines.push(`Updated: ${lastUpdatedAt ?? '-'}${lastError ? ` | last error: ${lastError}` : ''}`);
+  lines.push('');
+  lines.push(`Sessions (${sessions.length})`);
+
+  if (sessions.length === 0) {
+    lines.push('  (none)');
+  } else {
+    sessions.slice(0, 12).forEach((session, index) => {
+      const marker = index === selectedIndex ? '>' : ' ';
+      lines.push(
+        `${marker} ${session.id} | actor=${session.actor} | status=${session.status} | started=${session.started_at}`
+      );
+    });
+  }
+
+  lines.push('');
+  lines.push(`Events (${events.length})${selectedSession ? ` | session=${selectedSession.id}` : ''}`);
+  if (events.length === 0) {
+    lines.push('  (none)');
+  } else {
+    for (const event of events) {
+      lines.push(`  ${event.created_at} | ${event.type} | ${JSON.stringify(event.payload)}`);
+    }
+  }
+
+  output.write(`${lines.join('\n')}\n`);
+}
+
+async function runOpsConsole(options) {
+  if (!input.isTTY) {
+    throw new Error('ops requires an interactive terminal (TTY).');
+  }
+
+  const refreshMs = toNumberInRange(options.refreshMs, 5000, 1000, 60000);
+  let tailLimit = toNumberInRange(options.limit, 50, 10, 200);
+  const tailLimitOptions = [20, 50, 100, 200];
+  const config = await readConfig();
+  const client = getClient(config);
+  const projectKey = options.projectKey ?? options.project ?? config.defaultProjectKey ?? config.syncStatus?.project;
+  if (!projectKey) {
+    throw new Error('Missing project key. Pass --project-key, sync --project, or run start first.');
+  }
+
+  const project = await ensureProject(client, projectKey, projectKey);
+  let selectedIndex = 0;
+  let showAllSessions = false;
+  let sessions = [];
+  let selectedSession = null;
+  let events = [];
+  let lastUpdatedAt = null;
+  let lastError = null;
+
+  const refresh = async () => {
+    try {
+      const allSessions = await listSessions(client, project.id, 120);
+      sessions = showAllSessions ? allSessions : allSessions.filter((session) => session.status === 'active');
+      if (sessions.length === 0) {
+        selectedIndex = 0;
+        selectedSession = null;
+        events = [];
+      } else {
+        if (selectedIndex > sessions.length - 1) {
+          selectedIndex = sessions.length - 1;
+        }
+        selectedSession = sessions[selectedIndex];
+        events = await getSessionEvents(client, selectedSession.id, tailLimit, { ascending: false });
+        events.reverse();
+      }
+      lastError = null;
+    } catch (error) {
+      lastError = formatError(error);
+    }
+    lastUpdatedAt = new Date().toISOString();
+  };
+
+  const redraw = () => {
+    renderOpsDashboard({
+      projectKey,
+      sessions,
+      selectedIndex,
+      selectedSession,
+      events,
+      tailLimit,
+      showAllSessions,
+      refreshMs,
+      lastUpdatedAt,
+      lastError
+    });
+  };
+
+  await refresh();
+  redraw();
+
+  let intervalHandle = null;
+  let closed = false;
+  const close = () => {
+    if (closed) {
+      return;
+    }
+    closed = true;
+    if (intervalHandle) {
+      clearInterval(intervalHandle);
+    }
+    input.off('keypress', onKeypress);
+    if (typeof input.setRawMode === 'function') {
+      input.setRawMode(false);
+    }
+    output.write('\n');
+  };
+
+  const onKeypress = async (_value, key) => {
+    try {
+      if (key?.ctrl && key.name === 'c') {
+        close();
+        return;
+      }
+      if (!key?.name) {
+        return;
+      }
+
+      if (key.name === 'q') {
+        close();
+        return;
+      }
+
+      if ((key.name === 'j' || key.name === 'down') && sessions.length > 0) {
+        selectedIndex = Math.min(selectedIndex + 1, sessions.length - 1);
+        await refresh();
+        redraw();
+        return;
+      }
+
+      if ((key.name === 'k' || key.name === 'up') && sessions.length > 0) {
+        selectedIndex = Math.max(selectedIndex - 1, 0);
+        await refresh();
+        redraw();
+        return;
+      }
+
+      if (key.name === 'r') {
+        await refresh();
+        redraw();
+        return;
+      }
+
+      if (key.name === 'l') {
+        const index = tailLimitOptions.indexOf(tailLimit);
+        tailLimit = tailLimitOptions[(index + 1) % tailLimitOptions.length];
+        await refresh();
+        redraw();
+        return;
+      }
+
+      if (key.name === 'a') {
+        showAllSessions = !showAllSessions;
+        selectedIndex = 0;
+        await refresh();
+        redraw();
+      }
+    } catch (error) {
+      lastError = formatError(error);
+      redraw();
+    }
+  };
+
+  readline.emitKeypressEvents(input);
+  if (typeof input.setRawMode === 'function') {
+    input.setRawMode(true);
+  }
+  input.on('keypress', onKeypress);
+
+  intervalHandle = setInterval(async () => {
+    if (closed) {
+      return;
+    }
+    await refresh();
+    redraw();
+  }, refreshMs);
+
+  await new Promise((resolve) => {
+    const done = () => {
+      close();
+      resolve();
+    };
+    input.once('end', done);
+    const poll = setInterval(() => {
+      if (closed) {
+        clearInterval(poll);
+        resolve();
+      }
+    }, 100);
+  });
+}
+
 program
   .name('opensession')
   .description('Session continuity bridge CLI for Supabase')
@@ -375,6 +604,7 @@ program
 
 program
   .command('start')
+  .alias('st')
   .description('Start a new session and emit a start event')
   .requiredOption('--project-key <projectKey>', 'Project key')
   .option('--project-name <projectName>', 'Project display name')
@@ -402,6 +632,7 @@ program
 
 program
   .command('resume')
+  .alias('rs')
   .description('Resume an existing session by emitting a resumed event')
   .requiredOption('--session-id <sessionId>', 'Session id to resume')
   .option('--actor <actor>', 'Actor override')
@@ -425,6 +656,7 @@ program
 
 program
   .command('status')
+  .alias('ps')
   .description('Show active sessions and latest sync status')
   .option('--project-key <projectKey>', 'Project key (defaults to configured project key)')
   .option('--project <projectKey>', 'Alias of --project-key')
@@ -517,6 +749,7 @@ program
 
 program
   .command('viewer')
+  .alias('vw')
   .description('Run read-only web viewer for projects/sessions/events')
   .option('--host <host>', 'Host to bind', '127.0.0.1')
   .option('--port <port>', 'Port to bind', '8787')
@@ -597,6 +830,7 @@ program
 
 program
   .command('sync')
+  .alias('sy')
   .description('Sync local/remote session state for a project')
   .requiredOption('--project <projectKey>', 'Project key')
   .action(async (options) => {
@@ -638,6 +872,7 @@ program
 
 program
   .command('log')
+  .alias('lg')
   .description('Show session event log')
   .option('--session-id <sessionId>', 'Session id (defaults to last session)')
   .option('--limit <limit>', 'Number of events', '50')
@@ -757,6 +992,17 @@ program
     for (const bucket of trend) {
       console.log(`${bucket.weekStart} | ${bucket.sessions} | ${bucket.uniqueActors} | ${bucket.events}`);
     }
+  });
+
+program
+  .command('ops')
+  .description('Run keyboard-driven ops console (TUI) for session/event monitoring')
+  .option('--project-key <projectKey>', 'Project key (defaults to configured project key)')
+  .option('--project <projectKey>', 'Alias of --project-key')
+  .option('--refresh-ms <refreshMs>', 'Auto refresh interval in ms', '5000')
+  .option('--limit <limit>', 'Tail event limit (10-200)', '50')
+  .action(async (options) => {
+    await runOpsConsole(options);
   });
 
 program
