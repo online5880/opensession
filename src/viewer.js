@@ -21,7 +21,7 @@ a.item.active { background: #e5edff; }
 .meta { display: block; margin-top: 4px; font-size: 12px; color: #6b7280; }
 .panel-empty { padding: 12px; color: #6b7280; font-size: 13px; }
 .content-col { display: grid; grid-template-rows: auto auto 1fr; gap: 12px; min-height: calc(100vh - 120px); }
-.summary-grid { display: grid; grid-template-columns: repeat(2, minmax(140px, 1fr)); gap: 8px; padding: 10px 12px; }
+.summary-grid { display: grid; grid-template-columns: repeat(3, minmax(140px, 1fr)); gap: 8px; padding: 10px 12px; }
 .summary-card { border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px 10px; background: #f8fafc; }
 .summary-card .label { display: block; font-size: 11px; color: #6b7280; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.04em; }
 .summary-card .value { font-size: 16px; font-weight: 600; }
@@ -39,6 +39,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monos
 @media (max-width: 1080px) {
   main { grid-template-columns: 1fr; }
   .content-col { min-height: auto; }
+  .summary-grid { grid-template-columns: repeat(2, minmax(140px, 1fr)); }
 }
 `;
 
@@ -95,6 +96,13 @@ function toIntegerInRange(raw, fallback, min, max) {
   return value;
 }
 
+function percent(numerator, denominator) {
+  if (!denominator) {
+    return 100;
+  }
+  return Math.max(0, Math.min(100, (numerator / denominator) * 100));
+}
+
 function renderApp({
   configPath,
   projects,
@@ -107,7 +115,8 @@ function renderApp({
   projectTrend,
   tailLimit,
   refreshSeconds,
-  loadError
+  loadError,
+  reliability
 }) {
   const projectItems = projects
     .map((project) => {
@@ -178,6 +187,8 @@ function renderApp({
             <div class="summary-card"><span class="label">28d Events</span><span class="value">${projectKpis?.totalEvents ?? 0}</span></div>
             <div class="summary-card"><span class="label">28d Actors</span><span class="value">${projectKpis?.uniqueActors ?? 0}</span></div>
             <div class="summary-card"><span class="label">Events / Session</span><span class="value">${(projectKpis?.eventsPerSession ?? 0).toFixed(2)}</span></div>
+            <div class="summary-card"><span class="label">HTTP Availability</span><span class="value">${escapeHtml(reliability.httpAvailability)}</span></div>
+            <div class="summary-card"><span class="label">DB Probe Success</span><span class="value">${escapeHtml(reliability.dbProbeSuccess)}</span></div>
           </div>
         </section>
         <section>
@@ -244,23 +255,91 @@ export async function startViewerServer({ host, port }) {
   const config = await readConfig();
   const client = getClient(config);
   const configPath = getConfigPath();
+  const startedAt = Date.now();
+  const metrics = {
+    totalRequests: 0,
+    failedRequests: 0,
+    totalLatencyMs: 0,
+    dbProbeTotal: 0,
+    dbProbeFailed: 0,
+    lastDbProbeAt: null,
+    lastDbProbeError: null,
+    lastDbProbeLatencyMs: null
+  };
+
+  async function runDbProbe() {
+    const probeStarted = Date.now();
+    metrics.dbProbeTotal += 1;
+    try {
+      await listProjects(client, 1);
+      metrics.lastDbProbeAt = new Date().toISOString();
+      metrics.lastDbProbeError = null;
+      metrics.lastDbProbeLatencyMs = Date.now() - probeStarted;
+      return { ok: true, latencyMs: metrics.lastDbProbeLatencyMs };
+    } catch (error) {
+      metrics.dbProbeFailed += 1;
+      metrics.lastDbProbeAt = new Date().toISOString();
+      metrics.lastDbProbeError = formatError(error);
+      metrics.lastDbProbeLatencyMs = Date.now() - probeStarted;
+      return { ok: false, latencyMs: metrics.lastDbProbeLatencyMs, error: metrics.lastDbProbeError };
+    }
+  }
 
   const server = http.createServer(async (req, res) => {
+    const requestStarted = Date.now();
+    metrics.totalRequests += 1;
+    let responseStatusCode = 200;
+    const respondJson = (statusCode, payload) => {
+      responseStatusCode = statusCode;
+      sendJson(res, statusCode, payload);
+    };
+    const respondHtml = (statusCode, body) => {
+      responseStatusCode = statusCode;
+      sendHtml(res, statusCode, body);
+    };
+
     try {
       if (req.method !== 'GET' && req.method !== 'HEAD') {
-        sendJson(res, 405, { error: 'Method not allowed. Viewer is read-only (GET/HEAD only).' });
+        respondJson(405, { error: 'Method not allowed. Viewer is read-only (GET/HEAD only).' });
         return;
       }
 
       const url = new URL(req.url ?? '/', `http://${req.headers.host ?? `${host}:${port}`}`);
 
       if (url.pathname === '/health') {
-        sendJson(res, 200, { ok: true, mode: 'read-only' });
+        const fullProbe = url.searchParams.get('full') === '1';
+        const probe = fullProbe ? await runDbProbe() : null;
+        respondJson(200, {
+          ok: true,
+          mode: 'read-only',
+          uptimeSec: Math.floor((Date.now() - startedAt) / 1000),
+          http: {
+            requests: metrics.totalRequests,
+            failed: metrics.failedRequests,
+            avgLatencyMs: metrics.totalRequests > 0 ? Math.round(metrics.totalLatencyMs / metrics.totalRequests) : 0,
+            availability: `${percent(
+              metrics.totalRequests - metrics.failedRequests,
+              metrics.totalRequests
+            ).toFixed(2)}%`
+          },
+          db: {
+            probes: metrics.dbProbeTotal,
+            failed: metrics.dbProbeFailed,
+            successRate: `${percent(
+              metrics.dbProbeTotal - metrics.dbProbeFailed,
+              metrics.dbProbeTotal
+            ).toFixed(2)}%`,
+            lastProbeAt: metrics.lastDbProbeAt,
+            lastProbeLatencyMs: metrics.lastDbProbeLatencyMs,
+            lastProbeError: metrics.lastDbProbeError
+          },
+          probe
+        });
         return;
       }
 
       if (url.pathname !== '/') {
-        sendJson(res, 404, { error: 'Not found' });
+        respondJson(404, { error: 'Not found' });
         return;
       }
 
@@ -322,6 +401,17 @@ export async function startViewerServer({ host, port }) {
         }
       }
 
+      const reliability = {
+        httpAvailability: `${percent(
+          metrics.totalRequests - metrics.failedRequests,
+          metrics.totalRequests
+        ).toFixed(2)}%`,
+        dbProbeSuccess: `${percent(
+          metrics.dbProbeTotal - metrics.dbProbeFailed,
+          metrics.dbProbeTotal
+        ).toFixed(2)}%`
+      };
+
       const body = renderApp({
         configPath,
         projects,
@@ -334,12 +424,18 @@ export async function startViewerServer({ host, port }) {
         projectTrend,
         tailLimit,
         refreshSeconds,
-        loadError
+        loadError,
+        reliability
       });
-      sendHtml(res, 200, body);
+      respondHtml(200, body);
     } catch (error) {
       const message = formatError(error);
-      sendJson(res, 500, { error: message });
+      respondJson(500, { error: message });
+    } finally {
+      metrics.totalLatencyMs += Date.now() - requestStarted;
+      if (responseStatusCode >= 500) {
+        metrics.failedRequests += 1;
+      }
     }
   });
 
