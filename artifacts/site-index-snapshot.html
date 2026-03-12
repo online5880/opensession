@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OpenSession | Session continuity for teams and agents</title>
+    <meta
+      name="description"
+      content="OpenSession keeps multi-agent work sessions durable across runtime resets with a lightweight Supabase-backed event timeline."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&family=JetBrains+Mono:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --ink-950: #081218;
+        --ink-900: #10202a;
+        --ink-700: #2a4c5c;
+        --ink-500: #5d8ba1;
+        --mist-100: #f2f7fa;
+        --mist-50: #f9fcff;
+        --teal-500: #19b7a5;
+        --teal-600: #109a8b;
+        --amber-400: #ffc663;
+        --line: #d7e5ee;
+        --code-bg: #071a24;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        font-family: "Manrope", "Avenir Next", "Segoe UI", sans-serif;
+        color: var(--ink-900);
+        background:
+          radial-gradient(circle at 20% 0%, #d3edf7 0%, transparent 45%),
+          radial-gradient(circle at 95% 20%, #caefe8 0%, transparent 40%),
+          linear-gradient(180deg, #f7fbfe 0%, #f1f7fb 35%, #edf5fa 100%);
+        line-height: 1.6;
+      }
+
+      .container {
+        width: min(1100px, 92vw);
+        margin: 0 auto;
+      }
+
+      .hero {
+        padding: 72px 0 44px;
+      }
+
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        border: 1px solid #b8d6e5;
+        background: #f1fbff;
+        color: var(--ink-700);
+        border-radius: 999px;
+        font-size: 0.82rem;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        padding: 8px 14px;
+      }
+
+      h1 {
+        margin: 14px 0 12px;
+        font-size: clamp(2rem, 5vw, 3.4rem);
+        line-height: 1.08;
+        letter-spacing: -0.03em;
+      }
+
+      .hero p {
+        margin: 0;
+        max-width: 760px;
+        color: #224253;
+        font-size: clamp(1rem, 2.2vw, 1.2rem);
+      }

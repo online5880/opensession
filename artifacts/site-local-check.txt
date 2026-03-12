@@ -1,0 +1,13 @@
+date=2026-03-12T14:12:49Z
+check: CTA npm link
+PASS
+check: CTA github link
+PASS
+check: quickstart section
+PASS
+check: commands section
+PASS
+check: troubleshooting section
+PASS
+check: single-page docs mention
+PASS
