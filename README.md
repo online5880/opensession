@@ -89,6 +89,16 @@ Run read-only web viewer locally.
 npx @online5880/opensession viewer --host 127.0.0.1 --port 5880
 ```
 
+### `webhook-server`
+Run inbound webhook ingestion server + automation forwarding.
+
+```bash
+npx @online5880/opensession webhook-server --project-key demo --port 8788
+curl -X POST http://127.0.0.1:8788/webhooks/event \
+  -H 'content-type: application/json' \
+  -d '{"source":"github","eventType":"github.push","projectKey":"demo","payload":{"ref":"refs/heads/main"}}'
+```
+
 ---
 
 ## 3) Config Location
@@ -155,6 +165,57 @@ Fix:
 - Prefer small, frequent commits and push often.
 - Keep updates reproducible: include command and output snippets.
 - For remote demo links in this environment, share Tailscale URL (not localhost).
+
+---
+
+## 6.1) Integration/Automation Rules
+
+`webhook-server` can ingest external events, append them to sessions, and forward matched events.
+
+### Endpoint
+- `POST /webhooks/event`
+- Optional auth header: `x-opensession-secret: <secret>` when `--secret` (or `OPENSESSION_WEBHOOK_SECRET`) is set
+
+### Request body
+```json
+{
+  "source": "github",
+  "eventType": "github.push",
+  "projectKey": "demo",
+  "actor": "github-bot",
+  "sessionId": "optional-existing-session-id",
+  "payload": {
+    "ref": "refs/heads/main"
+  }
+}
+```
+
+### Automation config file (JSON)
+Use `--automation-file ./automation.json`:
+
+```json
+{
+  "webhooks": [
+    {
+      "url": "https://hooks.slack.com/services/XXX/YYY/ZZZ",
+      "eventTypes": ["github.push"],
+      "source": "github"
+    }
+  ],
+  "rules": [
+    {
+      "name": "telegram-on-critical",
+      "when": { "eventType": "alert.critical" },
+      "actions": [
+        {
+          "type": "webhook",
+          "url": "https://api.telegram.org/bot<TOKEN>/sendMessage"
+        }
+      ]
+    }
+  ]
+}
+```
 
 ---
 

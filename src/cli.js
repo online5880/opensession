@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { startHookServer } from './hook-server.js';
 import {
   appendEvent,
   ensureProject,
@@ -300,6 +301,15 @@ async function runNpmGlobalUpdate(packageName) {
   });
 }
 
+async function readAutomationConfigFromFile(pathValue) {
+  const raw = await readFile(pathValue, 'utf8');
+  const parsed = JSON.parse(raw);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('Automation config file must be a JSON object.');
+  }
+  return parsed;
+}
+
 program
   .name('opensession')
   .description('Session continuity bridge CLI for Supabase')
@@ -509,6 +519,63 @@ program
 
     const { server, url } = await startViewerServer({ host, port });
     console.log(`Read-only viewer running at ${url}`);
+    console.log('Press Ctrl+C to stop.');
+
+    process.once('SIGINT', () => {
+      server.close(() => {
+        process.exit(0);
+      });
+    });
+  });
+
+program
+  .command('webhook-server')
+  .description('Run inbound webhook ingestion server with optional automation forwarding')
+  .option('--host <host>', 'Host to bind', '127.0.0.1')
+  .option('--port <port>', 'Port to bind', '8788')
+  .option('--project-key <projectKey>', 'Default project key when missing from payload')
+  .option('--actor <actor>', 'Default actor for auto-created sessions')
+  .option('--session-id <sessionId>', 'Force all webhooks into a specific session')
+  .option('--secret <secret>', 'Shared secret expected in x-opensession-secret header')
+  .option('--automation-file <path>', 'JSON file with automation rules/webhooks')
+  .option('--no-auto-start-session', 'Disable automatic session creation when no active session exists')
+  .action(async (options) => {
+    const host = String(options.host ?? '127.0.0.1');
+    const port = Number.parseInt(String(options.port ?? '8788'), 10);
+    if (!Number.isInteger(port) || port <= 0 || port > 65535) {
+      throw new Error('Invalid port. Use a number between 1 and 65535.');
+    }
+
+    const config = await readConfig();
+    const automationFromFile = options.automationFile
+      ? await readAutomationConfigFromFile(options.automationFile)
+      : {};
+    const automationConfig = {
+      ...(config.automation ?? {}),
+      ...automationFromFile
+    };
+
+    const client = getClient(config);
+    const projectKey = options.projectKey ?? config.defaultProjectKey ?? null;
+    const actor = options.actor ?? config.actor ?? 'integration-bot';
+    const fixedSessionId = options.sessionId ?? null;
+    const autoStartSession = options.autoStartSession !== false;
+
+    const { server, url } = await startHookServer({
+      host,
+      port,
+      secret: options.secret ?? process.env.OPENSESSION_WEBHOOK_SECRET ?? null,
+      projectKey,
+      actor,
+      autoStartSession,
+      fixedSessionId,
+      client,
+      automationConfig
+    });
+
+    console.log(`Webhook server listening at ${url}`);
+    console.log('POST events to /webhooks/event');
+    console.log('Health check: GET /health');
     console.log('Press Ctrl+C to stop.');
 
     process.once('SIGINT', () => {
