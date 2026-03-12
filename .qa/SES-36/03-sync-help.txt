@@ -1,8 +1,0 @@
-Usage: opensession sync|sy [options]
-
-Sync local/remote session state for a project
-
-Options:
-  --project <projectKey>      Project key
-  --project-key <projectKey>  Alias of --project
-  -h, --help                  display help for command

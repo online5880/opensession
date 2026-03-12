@@ -10,3 +10,7 @@ artifacts/
 *.jpg
 *.jpeg
 *.webp
+
+# qa outputs
+.qa/
+*.exit

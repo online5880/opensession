@@ -1,1 +1,0 @@
-Missing project key. Pass --project or --project-key.

@@ -1,1 +1,0 @@
-동기화 실패: Supabase is not configured. Run `opensession init` first.

@@ -1,9 +1,0 @@
-Usage: opensession list|sessions [options]
-
-List recent sessions for a project
-
-Options:
-  --project-key <projectKey>  Project key (defaults to configured project key)
-  --project <projectKey>      Alias of --project-key
-  --limit <limit>             Number of sessions (default: "20")
-  -h, --help                  display help for command

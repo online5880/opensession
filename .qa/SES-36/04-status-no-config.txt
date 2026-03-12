@@ -1,9 +1,0 @@
-CLI version: 0.1.2
-Latest version: 0.1.1
-Version status: up-to-date
-Project: demo
-Last sync: -
-Sync project: -
-Pending events: 0
-Recent sync error: -
-원격 상태 확인 불가: Supabase is not configured. Run `opensession init` first.
