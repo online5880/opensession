@@ -1,7 +1,8 @@
 import http from 'node:http';
 import { URL } from 'node:url';
 import { getConfigPath, readConfig } from './config.js';
-import { getClient, getSessionEvents, listProjects, listSessions } from './supabase.js';
+import { computeKpis, computeWeeklyTrend } from './metrics.js';
+import { getClient, getSessionEvents, listProjects, listSessionEvents, listSessions } from './supabase.js';
 
 const CSS = `
 body { margin: 0; font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f6f8fb; color: #111827; }
@@ -30,6 +31,7 @@ a.item.active { background: #e5edff; }
 .details-key { color: #6b7280; }
 .events-header { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
 .events-meta { font-size: 12px; color: #6b7280; padding-right: 12px; }
+.trend-table td, .trend-table th { font-size: 12px; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
 th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
 th { background: #f9fafb; position: sticky; top: 0; }
@@ -101,6 +103,8 @@ function renderApp({
   selectedSessionId,
   selectedSession,
   events,
+  projectKpis,
+  projectTrend,
   tailLimit,
   refreshSeconds,
   loadError
@@ -170,9 +174,24 @@ function renderApp({
           <div class="summary-grid">
             <div class="summary-card"><span class="label">Projects</span><span class="value">${projects.length}</span></div>
             <div class="summary-card"><span class="label">Project Sessions</span><span class="value">${sessions.length}</span></div>
-            <div class="summary-card"><span class="label">Active Sessions</span><span class="value">${activeSessions}</span></div>
-            <div class="summary-card"><span class="label">Tail Events</span><span class="value">${events.length}</span></div>
+            <div class="summary-card"><span class="label">Active Sessions</span><span class="value">${projectKpis?.activeSessions ?? activeSessions}</span></div>
+            <div class="summary-card"><span class="label">28d Events</span><span class="value">${projectKpis?.totalEvents ?? 0}</span></div>
+            <div class="summary-card"><span class="label">28d Actors</span><span class="value">${projectKpis?.uniqueActors ?? 0}</span></div>
+            <div class="summary-card"><span class="label">Events / Session</span><span class="value">${(projectKpis?.eventsPerSession ?? 0).toFixed(2)}</span></div>
           </div>
+        </section>
+        <section>
+          <h2>Weekly Trend (28d)</h2>
+          ${
+            projectTrend.length === 0
+              ? '<div class="panel-empty">No trend data available.</div>'
+              : `<table class="trend-table"><thead><tr><th>Week Start</th><th>Sessions</th><th>Actors</th><th>Events</th></tr></thead><tbody>${projectTrend
+                  .map(
+                    (bucket) =>
+                      `<tr><td>${escapeHtml(bucket.weekStart)}</td><td>${bucket.sessions}</td><td>${bucket.uniqueActors}</td><td>${bucket.events}</td></tr>`
+                  )
+                  .join('')}</tbody></table>`
+          }
         </section>
         <section>
           <h2>Session Details</h2>
@@ -249,6 +268,8 @@ export async function startViewerServer({ host, port }) {
       let sessions = [];
       let selectedSession = null;
       let events = [];
+      let projectKpis = null;
+      let projectTrend = [];
       let loadError = null;
 
       try {
@@ -264,9 +285,22 @@ export async function startViewerServer({ host, port }) {
       if (selectedProjectId && !loadError) {
         try {
           sessions = await listSessions(client, selectedProjectId, 200);
+          const now = new Date();
+          const start = new Date(now);
+          start.setUTCDate(start.getUTCDate() - 28);
+          const sessionIds = sessions.map((session) => session.id);
+          const projectEvents = await listSessionEvents(client, sessionIds, {
+            since: start.toISOString(),
+            until: now.toISOString(),
+            ascending: true
+          });
+          projectKpis = computeKpis(sessions, projectEvents);
+          projectTrend = computeWeeklyTrend(sessions, projectEvents, 4, now);
         } catch (error) {
           loadError = formatError(error);
           sessions = [];
+          projectKpis = null;
+          projectTrend = [];
         }
       }
       const sessionIdFromQuery = url.searchParams.get('sessionId');
@@ -296,6 +330,8 @@ export async function startViewerServer({ host, port }) {
         selectedSessionId,
         selectedSession,
         events,
+        projectKpis,
+        projectTrend,
         tailLimit,
         refreshSeconds,
         loadError

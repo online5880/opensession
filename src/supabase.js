@@ -129,6 +129,34 @@ export async function getSessionEvents(client, sessionId, limit = 50, options = 
   return data;
 }
 
+export async function listSessionEvents(client, sessionIds, options = {}) {
+  if (!Array.isArray(sessionIds) || sessionIds.length === 0) {
+    return [];
+  }
+
+  let query = client
+    .from('session_events')
+    .select('id,session_id,type,payload,created_at')
+    .in('session_id', sessionIds)
+    .order('created_at', { ascending: options.ascending !== false });
+
+  if (options.since) {
+    query = query.gte('created_at', options.since);
+  }
+  if (options.until) {
+    query = query.lt('created_at', options.until);
+  }
+  if (Number.isInteger(options.limit) && options.limit > 0) {
+    query = query.limit(options.limit);
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    throw error;
+  }
+  return data;
+}
+
 export async function listProjects(client, limit = 50) {
   const { data, error } = await client
     .from('projects')

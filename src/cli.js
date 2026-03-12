@@ -15,11 +15,14 @@ import {
   getClient,
   getSession,
   getSessionEvents,
+  listSessionEvents,
   listActiveSessions,
+  listSessions,
   startSession,
   validateConnection
 } from './supabase.js';
 import { getConfigPath, mergeConfig, readConfig, writeConfig } from './config.js';
+import { computeKpis, computeWeeklyTrend, formatSignedDelta } from './metrics.js';
 import { startViewerServer } from './viewer.js';
 
 const program = new Command();
@@ -264,6 +267,10 @@ function compareSemver(left, right) {
     }
   }
   return 0;
+}
+
+function toPercent(value) {
+  return `${(value * 100).toFixed(1)}%`;
 }
 
 async function fetchLatestVersionFromNpm(packageName) {
@@ -649,6 +656,103 @@ program
 
     for (const event of events) {
       console.log(`${event.created_at} | ${event.type} | ${JSON.stringify(event.payload)}`);
+    }
+  });
+
+program
+  .command('report')
+  .description('Generate KPI and weekly trend report for a project')
+  .option('--project-key <projectKey>', 'Project key (defaults to configured project key)')
+  .option('--project <projectKey>', 'Alias of --project-key')
+  .option('--days <days>', 'Rolling window size in days', '28')
+  .option('--weeks <weeks>', 'Weekly buckets to show', '6')
+  .option('--json', 'Emit report as JSON')
+  .action(async (options) => {
+    const config = await readConfig();
+    const client = getClient(config);
+    const projectKey = options.project ?? options.projectKey ?? config.defaultProjectKey ?? config.syncStatus?.project;
+
+    if (!projectKey) {
+      throw new Error('Missing project key. Pass --project-key, sync --project, or run start first.');
+    }
+
+    const days = Math.max(1, Math.min(180, Number.parseInt(String(options.days ?? '28'), 10) || 28));
+    const weeks = Math.max(1, Math.min(26, Number.parseInt(String(options.weeks ?? '6'), 10) || 6));
+    const now = new Date();
+    const windowStart = new Date(now);
+    windowStart.setUTCDate(windowStart.getUTCDate() - days);
+    const previousWindowStart = new Date(windowStart);
+    previousWindowStart.setUTCDate(previousWindowStart.getUTCDate() - days);
+
+    const project = await ensureProject(client, projectKey, projectKey);
+    const sessions = await listSessions(client, project.id, 1000);
+    const allSessionIds = sessions.map((session) => session.id);
+
+    const windowSessions = sessions.filter((session) => {
+      const time = Date.parse(session.started_at);
+      return Number.isFinite(time) && time >= windowStart.getTime() && time < now.getTime();
+    });
+    const previousWindowSessions = sessions.filter((session) => {
+      const time = Date.parse(session.started_at);
+      return Number.isFinite(time) && time >= previousWindowStart.getTime() && time < windowStart.getTime();
+    });
+
+    const [windowEvents, previousWindowEvents] = await Promise.all([
+      listSessionEvents(client, allSessionIds, {
+        since: windowStart.toISOString(),
+        until: now.toISOString(),
+        ascending: true
+      }),
+      listSessionEvents(client, allSessionIds, {
+        since: previousWindowStart.toISOString(),
+        until: windowStart.toISOString(),
+        ascending: true
+      })
+    ]);
+
+    const kpis = computeKpis(windowSessions, windowEvents);
+    const previousKpis = computeKpis(previousWindowSessions, previousWindowEvents);
+    const trend = computeWeeklyTrend(windowSessions, windowEvents, weeks, now);
+
+    const payload = {
+      generatedAt: now.toISOString(),
+      project: {
+        key: project.project_key,
+        id: project.id
+      },
+      window: {
+        days,
+        since: windowStart.toISOString(),
+        until: now.toISOString()
+      },
+      kpis,
+      deltas: {
+        sessions: formatSignedDelta(kpis.totalSessions, previousKpis.totalSessions),
+        activeSessions: formatSignedDelta(kpis.activeSessions, previousKpis.activeSessions),
+        uniqueActors: formatSignedDelta(kpis.uniqueActors, previousKpis.uniqueActors),
+        events: formatSignedDelta(kpis.totalEvents, previousKpis.totalEvents)
+      },
+      trend
+    };
+
+    if (options.json) {
+      console.log(JSON.stringify(payload, null, 2));
+      return;
+    }
+
+    console.log(`Project KPI Report: ${project.project_key}`);
+    console.log(`Window: ${windowStart.toISOString()} -> ${now.toISOString()} (${days}d)`);
+    console.log('');
+    console.log(`Sessions       ${kpis.totalSessions} (${payload.deltas.sessions} vs prev ${days}d)`);
+    console.log(`Active         ${kpis.activeSessions} (${payload.deltas.activeSessions})`);
+    console.log(`Unique actors  ${kpis.uniqueActors} (${payload.deltas.uniqueActors})`);
+    console.log(`Events         ${kpis.totalEvents} (${payload.deltas.events})`);
+    console.log(`Events/session ${kpis.eventsPerSession.toFixed(2)}`);
+    console.log(`Resume rate    ${toPercent(kpis.resumeRate)}`);
+    console.log('');
+    console.log('Weekly trend (week_start | sessions | actors | events)');
+    for (const bucket of trend) {
+      console.log(`${bucket.weekStart} | ${bucket.sessions} | ${bucket.uniqueActors} | ${bucket.events}`);
     }
   });
 

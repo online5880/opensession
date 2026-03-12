@@ -99,6 +99,15 @@ curl -X POST http://127.0.0.1:8788/webhooks/event \
   -d '{"source":"github","eventType":"github.push","projectKey":"demo","payload":{"ref":"refs/heads/main"}}'
 ```
 
+### `report`
+Generate rolling KPI + weekly trend report.
+
+```bash
+npx @online5880/opensession report --project-key demo --days 28 --weeks 6
+# JSON output
+npx @online5880/opensession report --project-key demo --json
+```
+
 ---
 
 ## 3) Config Location
