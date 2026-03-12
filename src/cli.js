@@ -5,6 +5,7 @@ import readline from 'node:readline';
 import { createInterface } from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -612,9 +613,10 @@ program
     const config = await readConfig();
     const client = getClient(config);
     const actor = options.actor ?? config.actor ?? 'anonymous';
+    const operationId = randomUUID();
 
     const project = await ensureProject(client, options.projectKey, options.projectName);
-    const session = await startSession(client, project.id, actor);
+    const session = await startSession(client, project.id, actor, { operationId });
 
     await writeConfig(
       mergeConfig(config, {
@@ -638,13 +640,14 @@ program
     const config = await readConfig();
     const client = getClient(config);
     const actor = options.actor ?? config.actor ?? 'anonymous';
+    const operationId = randomUUID();
     const session = await getSession(client, options.sessionId);
 
     if (!session) {
       throw new Error(`Session not found: ${options.sessionId}`);
     }
 
-    const event = await appendEvent(client, session.id, 'resumed', { actor });
+    const event = await appendEvent(client, session.id, 'resumed', { actor }, { idempotencyKey: operationId });
     await writeConfig(mergeConfig(config, { lastSessionId: session.id }));
 
     console.log(`Session resumed: ${session.id}`);
