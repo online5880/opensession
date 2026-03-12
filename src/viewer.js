@@ -43,6 +43,27 @@ a.item.active { background: #e5edff; }
 .mini-list li { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; padding: 8px 12px; border-bottom: 1px solid #f1f5f9; }
 .mini-list li:last-child { border-bottom: 0; }
 .mini-list code { font-size: 11px; }
+.chain-list { margin: 0; padding: 8px 12px 12px; list-style: none; display: grid; gap: 8px; }
+.chain-item { border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px 10px; background: #fff; }
+.chain-top { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; font-size: 12px; }
+.chain-stage { display: inline-flex; border-radius: 999px; font-size: 11px; font-weight: 600; padding: 2px 8px; border: 1px solid transparent; }
+.chain-stage.intent { color: #0b3b79; background: #e6f0ff; border-color: #bfdbfe; }
+.chain-stage.action { color: #05504b; background: #dcfce7; border-color: #86efac; }
+.chain-stage.artifact { color: #6d3d00; background: #fff7d6; border-color: #fde68a; }
+.chain-stage.context { color: #374151; background: #f3f4f6; border-color: #d1d5db; }
+.chain-type { color: #4b5563; font-weight: 600; }
+.chain-time { color: #6b7280; }
+.chain-summary { margin-top: 6px; font-size: 12px; color: #111827; }
+.handoff-panel { padding: 10px 12px 12px; display: grid; gap: 10px; }
+.handoff-summary { border: 1px solid #e5e7eb; border-radius: 8px; background: #f8fafc; padding: 8px 10px; }
+.handoff-summary-row { display: grid; grid-template-columns: 110px 1fr; gap: 8px; font-size: 12px; padding: 4px 0; border-bottom: 1px solid #e5e7eb; }
+.handoff-summary-row:last-child { border-bottom: 0; }
+.handoff-label { color: #6b7280; }
+.handoff-value { color: #111827; }
+.next-actions { border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; }
+.next-actions h3 { margin: 0; font-size: 12px; padding: 8px 10px; border-bottom: 1px solid #e5e7eb; background: #f9fafb; text-transform: uppercase; letter-spacing: 0.04em; color: #374151; }
+.next-actions ol { margin: 0; padding: 8px 22px 10px; display: grid; gap: 6px; }
+.next-actions li { font-size: 12px; color: #111827; border: 0; list-style: decimal; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
 th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
 th { background: #f9fafb; position: sticky; top: 0; }
@@ -142,6 +163,180 @@ function aggregateSessionsByActor(sessions) {
     .map(([actor, count]) => ({ actor, count }));
 }
 
+function truncateText(value, maxLength) {
+  const text = String(value ?? '');
+  if (text.length <= maxLength) {
+    return text;
+  }
+  return `${text.slice(0, Math.max(0, maxLength - 1))}...`;
+}
+
+function hasAnyKeyword(text, keywords) {
+  return keywords.some((keyword) => text.includes(keyword));
+}
+
+function classifyEventStage(event) {
+  const type = String(event?.type ?? '').toLowerCase();
+  const payload = event?.payload && typeof event.payload === 'object' ? event.payload : {};
+  const payloadKeys = Object.keys(payload).map((key) => key.toLowerCase()).join(' ');
+  const payloadText = `${toPrettyJson(payload).toLowerCase()} ${payloadKeys}`;
+  const search = `${type} ${payloadText}`;
+
+  const artifactKeywords = ['artifact', 'output', 'result', 'report', 'diff', 'commit', 'patch', 'release', 'file', 'url'];
+  const intentKeywords = ['intent', 'goal', 'plan', 'scope', 'brief', 'task', 'spec', 'decision'];
+  const actionKeywords = ['action', 'run', 'exec', 'command', 'webhook', 'sync', 'start', 'resume', 'status', 'deploy', 'build', 'test'];
+
+  if (hasAnyKeyword(search, artifactKeywords)) {
+    return 'artifact';
+  }
+  if (hasAnyKeyword(search, intentKeywords)) {
+    return 'intent';
+  }
+  if (hasAnyKeyword(search, actionKeywords)) {
+    return 'action';
+  }
+  return 'context';
+}
+
+function summarizeEventPayload(payload) {
+  if (payload === null || payload === undefined) {
+    return '-';
+  }
+  if (typeof payload === 'string') {
+    return truncateText(payload, 140);
+  }
+  if (typeof payload !== 'object') {
+    return truncateText(String(payload), 140);
+  }
+
+  const preferredKeys = ['summary', 'message', 'title', 'intent', 'action', 'artifact', 'eventType', 'source', 'status', 'path', 'url', 'ref'];
+  const parts = [];
+  for (const key of preferredKeys) {
+    if (parts.length >= 3) {
+      break;
+    }
+    if (!(key in payload)) {
+      continue;
+    }
+    const raw = payload[key];
+    if (raw === null || raw === undefined) {
+      continue;
+    }
+    if (typeof raw === 'object') {
+      parts.push(`${key}=${truncateText(toPrettyJson(raw), 64)}`);
+      continue;
+    }
+    parts.push(`${key}=${truncateText(String(raw), 64)}`);
+  }
+
+  if (parts.length > 0) {
+    return truncateText(parts.join(' | '), 160);
+  }
+
+  const keys = Object.keys(payload);
+  if (keys.length === 0) {
+    return '{}';
+  }
+  const preview = keys.slice(0, 3).map((key) => `${key}=${truncateText(String(payload[key]), 48)}`);
+  return truncateText(preview.join(' | '), 160);
+}
+
+function gatherPayloadTextCandidates(payload) {
+  if (!payload || typeof payload !== 'object') {
+    return [];
+  }
+  const candidates = [];
+  for (const [key, value] of Object.entries(payload)) {
+    const lowerKey = key.toLowerCase();
+    if (typeof value === 'string') {
+      candidates.push({ key: lowerKey, value });
+      continue;
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        if (typeof item === 'string') {
+          candidates.push({ key: lowerKey, value: item });
+        }
+      }
+    }
+  }
+  return candidates;
+}
+
+function extractNextActions(events) {
+  const priorityKeys = ['nextaction', 'nextactions', 'todo', 'todos', 'actionitems', 'followup', 'followups', 'openitems'];
+  const actions = [];
+  for (const event of [...events].reverse()) {
+    const payload = event?.payload && typeof event.payload === 'object' ? event.payload : null;
+    const candidates = gatherPayloadTextCandidates(payload);
+    for (const item of candidates) {
+      const normalized = String(item.value ?? '').trim().replace(/\s+/g, ' ');
+      if (!normalized) {
+        continue;
+      }
+      if (priorityKeys.includes(item.key)) {
+        actions.push(normalized);
+        continue;
+      }
+      const lower = normalized.toLowerCase();
+      if (lower.startsWith('next:') || lower.startsWith('todo:') || lower.startsWith('follow-up:') || lower.startsWith('action:')) {
+        actions.push(normalized.replace(/^[^:]+:\s*/i, ''));
+      }
+    }
+    if (actions.length >= 6) {
+      break;
+    }
+  }
+
+  const deduped = [];
+  const seen = new Set();
+  for (const action of actions) {
+    const key = action.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    deduped.push(action);
+    if (deduped.length >= 4) {
+      break;
+    }
+  }
+  return deduped;
+}
+
+function buildHandoffPacket(selectedSession, chainItems, events) {
+  const latestByStage = { intent: null, action: null, artifact: null };
+  for (const row of [...chainItems].reverse()) {
+    if (!latestByStage[row.stage]) {
+      latestByStage[row.stage] = row;
+    }
+    if (latestByStage.intent && latestByStage.action && latestByStage.artifact) {
+      break;
+    }
+  }
+
+  const nextActions = extractNextActions(events);
+  const fallbackActions = [];
+  if (latestByStage.intent?.summary) {
+    fallbackActions.push(`Validate intent alignment: ${latestByStage.intent.summary}`);
+  }
+  if (latestByStage.action?.summary) {
+    fallbackActions.push(`Continue last action path: ${latestByStage.action.summary}`);
+  }
+  if (latestByStage.artifact?.summary) {
+    fallbackActions.push(`Review latest artifact before handoff: ${latestByStage.artifact.summary}`);
+  }
+
+  return {
+    actor: selectedSession?.actor ?? '-',
+    status: selectedSession?.status ?? '-',
+    latestIntent: latestByStage.intent?.summary ?? 'No explicit intent event detected.',
+    latestAction: latestByStage.action?.summary ?? 'No explicit action event detected.',
+    latestArtifact: latestByStage.artifact?.summary ?? 'No explicit artifact event detected.',
+    nextActions: nextActions.length > 0 ? nextActions : fallbackActions.slice(0, 3)
+  };
+}
+
 function renderApp({
   configPath,
   projects,
@@ -179,6 +374,38 @@ function renderApp({
   const endedSessions = sessions.filter((session) => session.status === 'ended').length;
   const latestEventAt = events.length > 0 ? events[events.length - 1].created_at : '-';
   const eventTypeBreakdown = aggregateEventsByType(events);
+  const chainItems = events.map((event, index) => ({
+    step: index + 1,
+    type: String(event.type ?? 'unknown'),
+    stage: classifyEventStage(event),
+    createdAt: event.created_at,
+    summary: summarizeEventPayload(event.payload)
+  }));
+  const chainStageCounts = chainItems.reduce(
+    (acc, row) => {
+      acc[row.stage] = (acc[row.stage] ?? 0) + 1;
+      return acc;
+    },
+    { intent: 0, action: 0, artifact: 0, context: 0 }
+  );
+  const handoffPacket = buildHandoffPacket(selectedSession, chainItems, events);
+  const handoffNextActionsHtml =
+    handoffPacket.nextActions.length === 0
+      ? '<li>No inferred next action. Add explicit `nextAction` or `todo` fields in event payloads.</li>'
+      : handoffPacket.nextActions.map((item) => `<li>${escapeHtml(item)}</li>`).join('');
+  const chainRows =
+    chainItems.length === 0
+      ? '<li class="chain-item"><div class="chain-summary">No events in the selected session.</div></li>'
+      : chainItems
+          .map(
+            (row) =>
+              `<li class="chain-item"><div class="chain-top"><span><strong>#${row.step}</strong> <span class="chain-type">${escapeHtml(
+                row.type
+              )}</span></span><span class="chain-stage ${row.stage}">${escapeHtml(row.stage)}</span><span class="chain-time">${escapeHtml(
+                row.createdAt
+              )}</span></div><div class="chain-summary">${escapeHtml(row.summary)}</div></li>`
+          )
+          .join('');
   const topActors = aggregateSessionsByActor(sessions);
   const eventRows = events
     .map(
@@ -249,6 +476,9 @@ function renderApp({
             <div class="summary-card"><span class="label">Status Filter</span><span class="value">${escapeHtml(statusLabel)}</span></div>
             <div class="summary-card"><span class="label">Actor Filter</span><span class="value">${escapeHtml(actorLabel)}</span></div>
             <div class="summary-card"><span class="label">Top Event Type</span><span class="value">${escapeHtml(eventTypeBreakdown[0]?.type ?? '-')}</span></div>
+            <div class="summary-card"><span class="label">Intent Nodes</span><span class="value">${chainStageCounts.intent}</span></div>
+            <div class="summary-card"><span class="label">Action Nodes</span><span class="value">${chainStageCounts.action}</span></div>
+            <div class="summary-card"><span class="label">Artifact Nodes</span><span class="value">${chainStageCounts.artifact}</span></div>
           </div>
         </section>
         <section>
@@ -306,6 +536,34 @@ function renderApp({
               <div class="details-row"><span class="details-key">Latest Event</span><span>${escapeHtml(latestEventAt)}</span></div>
             </div>`
               : '<div class="panel-empty">Select a session to view details.</div>'
+          }
+        </section>
+        <section>
+          <h2>Session Chain (Intent -> Action -> Artifact)</h2>
+          ${
+            selectedSession
+              ? `<ul class="chain-list">${chainRows}</ul>`
+              : '<div class="panel-empty">Select a session to inspect the chain.</div>'
+          }
+        </section>
+        <section>
+          <h2>Handoff Panel</h2>
+          ${
+            selectedSession
+              ? `<div class="handoff-panel">
+                  <div class="handoff-summary">
+                    <div class="handoff-summary-row"><span class="handoff-label">Actor</span><span class="handoff-value">${escapeHtml(handoffPacket.actor)}</span></div>
+                    <div class="handoff-summary-row"><span class="handoff-label">Status</span><span class="handoff-value">${escapeHtml(handoffPacket.status)}</span></div>
+                    <div class="handoff-summary-row"><span class="handoff-label">Intent</span><span class="handoff-value">${escapeHtml(handoffPacket.latestIntent)}</span></div>
+                    <div class="handoff-summary-row"><span class="handoff-label">Action</span><span class="handoff-value">${escapeHtml(handoffPacket.latestAction)}</span></div>
+                    <div class="handoff-summary-row"><span class="handoff-label">Artifact</span><span class="handoff-value">${escapeHtml(handoffPacket.latestArtifact)}</span></div>
+                  </div>
+                  <div class="next-actions">
+                    <h3>Next Actions</h3>
+                    <ol>${handoffNextActionsHtml}</ol>
+                  </div>
+                </div>`
+              : '<div class="panel-empty">Select a session to generate handoff packet summary and next actions.</div>'
           }
         </section>
         <section>
