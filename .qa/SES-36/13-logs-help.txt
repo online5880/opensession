@@ -1,0 +1,8 @@
+Usage: opensession log|lg [options]
+
+Show session event log
+
+Options:
+  --session-id <sessionId>  Session id (defaults to last session)
+  --limit <limit>           Number of events (default: "50")
+  -h, --help                display help for command

@@ -1,0 +1,31 @@
+Usage: opensession [options] [command]
+
+Session continuity bridge CLI for Supabase
+
+Options:
+  -V, --version             output the version number
+  -h, --help                display help for command
+
+Commands:
+  init|setup [options]      Initialize CLI config with interactive prompt
+  login [options]           Save actor identity used in session events
+  start|st [options]        Start a new session and emit a start event
+  resume|rs [options]       Resume an existing session by emitting a resumed
+                            event
+  list|sessions [options]   List recent sessions for a project
+  view|inspect [options]    Inspect a session with recent events
+  tail|follow [options]     Poll and print new events from a session
+  status|ps [options]       Show active sessions and latest sync status
+  self-update [options]     Check for updates and optionally install the latest
+                            global version
+  viewer|vw [options]       Run read-only web viewer for
+                            projects/sessions/events
+  webhook-server [options]  Run inbound webhook ingestion server with optional
+                            automation forwarding
+  sync|sy [options]         Sync local/remote session state for a project
+  log|lg [options]          Show session event log
+  report [options]          Generate KPI and weekly trend report for a project
+  ops [options]             Run keyboard-driven ops console (TUI) for
+                            session/event monitoring
+  config-path               Print local config path
+  help [command]            display help for command

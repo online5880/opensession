@@ -547,6 +547,20 @@ async function runOpsConsole(options) {
   });
 }
 
+function parsePositiveInt(raw, fallback) {
+  const value = Number.parseInt(String(raw ?? ''), 10);
+  if (!Number.isInteger(value) || value <= 0) {
+    return fallback;
+  }
+  return value;
+}
+
+function delay(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
 program
   .name('opensession')
   .description('Session continuity bridge CLI for Supabase')
@@ -554,6 +568,7 @@ program
 
 program
   .command('init')
+  .alias('setup')
   .description('Initialize CLI config with interactive prompt')
   .option('--project-key <projectKey>', 'Default project key')
   .option('--actor <actor>', 'Default actor/username')
@@ -652,6 +667,153 @@ program
 
     console.log(`Session resumed: ${session.id}`);
     console.log(`Event: ${event.id}`);
+  });
+
+program
+  .command('list')
+  .alias('sessions')
+  .description('List recent sessions for a project')
+  .option('--project-key <projectKey>', 'Project key (defaults to configured project key)')
+  .option('--project <projectKey>', 'Alias of --project-key')
+  .option('--limit <limit>', 'Number of sessions', '20')
+  .action(async (options) => {
+    const config = await readConfig();
+    const client = getClient(config);
+    const projectKey = options.project ?? options.projectKey ?? config.defaultProjectKey ?? config.syncStatus?.project;
+    if (!projectKey) {
+      throw new Error('Missing project key. Pass --project-key, sync --project, or run start first.');
+    }
+
+    const limit = parsePositiveInt(options.limit, 20);
+    const project = await ensureProject(client, projectKey, projectKey);
+    const sessions = await listSessions(client, project.id, limit);
+
+    if (sessions.length === 0) {
+      console.log(`No sessions for project ${project.project_key}`);
+      return;
+    }
+
+    for (const session of sessions) {
+      console.log(
+        `${session.id} | actor=${session.actor} | status=${session.status} | started=${session.started_at} | ended=${session.ended_at ?? '-'}`
+      );
+    }
+  });
+
+program
+  .command('view')
+  .alias('inspect')
+  .description('Inspect a session with recent events')
+  .option('--session-id <sessionId>', 'Session id (defaults to latest known session)')
+  .option('--project-key <projectKey>', 'Project key used when selecting latest session')
+  .option('--project <projectKey>', 'Alias of --project-key')
+  .option('--tail <tail>', 'Number of recent events to show', '20')
+  .action(async (options) => {
+    const config = await readConfig();
+    const client = getClient(config);
+    let sessionId = options.sessionId ?? config.lastSessionId ?? null;
+
+    if (!sessionId) {
+      const projectKey = options.project ?? options.projectKey ?? config.defaultProjectKey ?? config.syncStatus?.project;
+      if (!projectKey) {
+        throw new Error('Missing session id. Pass --session-id, --project-key, or run start first.');
+      }
+      const project = await ensureProject(client, projectKey, projectKey);
+      const sessions = await listSessions(client, project.id, 1);
+      sessionId = sessions[0]?.id ?? null;
+    }
+
+    if (!sessionId) {
+      throw new Error('No sessions found to inspect.');
+    }
+
+    const session = await getSession(client, sessionId);
+    if (!session) {
+      throw new Error(`Session not found: ${sessionId}`);
+    }
+
+    const tail = parsePositiveInt(options.tail, 20);
+    const events = await getSessionEvents(client, session.id, tail, { ascending: false });
+    const ordered = [...events].reverse();
+    await writeConfig(mergeConfig(config, { lastSessionId: session.id }));
+
+    console.log(`Session: ${session.id}`);
+    console.log(`Project ID: ${session.project_id}`);
+    console.log(`Actor: ${session.actor}`);
+    console.log(`Status: ${session.status}`);
+    console.log(`Started: ${session.started_at}`);
+    console.log(`Ended: ${session.ended_at ?? '-'}`);
+    console.log(`Events: ${ordered.length} (tail=${tail})`);
+
+    for (const event of ordered) {
+      console.log(`${event.created_at} | ${event.type} | ${JSON.stringify(event.payload)}`);
+    }
+  });
+
+program
+  .command('tail')
+  .alias('follow')
+  .description('Poll and print new events from a session')
+  .option('--session-id <sessionId>', 'Session id (defaults to latest known session)')
+  .option('--project-key <projectKey>', 'Project key used when selecting latest session')
+  .option('--project <projectKey>', 'Alias of --project-key')
+  .option('--limit <limit>', 'Number of recent events to request per poll', '20')
+  .option('--interval <interval>', 'Polling interval in seconds', '2')
+  .option('--iterations <iterations>', 'Number of polling rounds (0 = infinite)', '0')
+  .action(async (options) => {
+    const config = await readConfig();
+    const client = getClient(config);
+    let sessionId = options.sessionId ?? config.lastSessionId ?? null;
+
+    if (!sessionId) {
+      const projectKey = options.project ?? options.projectKey ?? config.defaultProjectKey ?? config.syncStatus?.project;
+      if (!projectKey) {
+        throw new Error('Missing session id. Pass --session-id, --project-key, or run start first.');
+      }
+      const project = await ensureProject(client, projectKey, projectKey);
+      const sessions = await listSessions(client, project.id, 1);
+      sessionId = sessions[0]?.id ?? null;
+    }
+
+    if (!sessionId) {
+      throw new Error('No sessions found to tail.');
+    }
+
+    const session = await getSession(client, sessionId);
+    if (!session) {
+      throw new Error(`Session not found: ${sessionId}`);
+    }
+
+    const limit = parsePositiveInt(options.limit, 20);
+    const intervalSec = parsePositiveInt(options.interval, 2);
+    const iterations = Math.max(0, Number.parseInt(String(options.iterations ?? '0'), 10) || 0);
+
+    await writeConfig(mergeConfig(config, { lastSessionId: session.id }));
+    console.log(`Tailing session: ${session.id}`);
+    console.log(`Polling: interval=${intervalSec}s limit=${limit} iterations=${iterations === 0 ? 'infinite' : iterations}`);
+
+    const seenEventIds = new Set();
+    let remaining = iterations;
+    while (iterations === 0 || remaining > 0) {
+      const events = await getSessionEvents(client, session.id, limit, { ascending: false });
+      const ordered = [...events].reverse();
+      for (const event of ordered) {
+        if (seenEventIds.has(event.id)) {
+          continue;
+        }
+        seenEventIds.add(event.id);
+        console.log(`${event.created_at} | ${event.type} | ${JSON.stringify(event.payload)}`);
+      }
+
+      if (iterations !== 0) {
+        remaining -= 1;
+        if (remaining <= 0) {
+          break;
+        }
+      }
+
+      await delay(intervalSec * 1000);
+    }
   });
 
 program
@@ -832,26 +994,32 @@ program
   .command('sync')
   .alias('sy')
   .description('Sync local/remote session state for a project')
-  .requiredOption('--project <projectKey>', 'Project key')
+  .option('--project <projectKey>', 'Project key')
+  .option('--project-key <projectKey>', 'Alias of --project')
   .action(async (options) => {
     const config = await readConfig();
     const now = new Date().toISOString();
+    const projectKey = options.project ?? options.projectKey;
+
+    if (!projectKey) {
+      throw new Error('Missing project key. Pass --project or --project-key.');
+    }
 
     try {
       const client = getClient(config);
-      const project = await ensureProject(client, options.project, options.project);
+      const project = await ensureProject(client, projectKey, projectKey);
       const active = await listActiveSessions(client, project.id);
       const next = mergeConfig(config, {
-        defaultProjectKey: options.project,
+        defaultProjectKey: projectKey,
         syncStatus: {
           lastSyncAt: now,
-          project: options.project,
+          project: projectKey,
           pendingEvents: 0,
           lastError: null
         }
       });
       await writeConfig(next);
-      console.log(`동기화 완료: project=${options.project}`);
+      console.log(`동기화 완료: project=${projectKey}`);
       console.log(`active sessions=${active.length}`);
       console.log(`pending events=0`);
     } catch (error) {
@@ -859,7 +1027,7 @@ program
       const next = mergeConfig(config, {
         syncStatus: {
           lastSyncAt: now,
-          project: options.project,
+          project: projectKey,
           pendingEvents: 0,
           lastError: message
         }
@@ -873,6 +1041,7 @@ program
 program
   .command('log')
   .alias('lg')
+  .alias('logs')
   .description('Show session event log')
   .option('--session-id <sessionId>', 'Session id (defaults to last session)')
   .option('--limit <limit>', 'Number of events', '50')

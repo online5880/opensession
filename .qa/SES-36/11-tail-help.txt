@@ -1,0 +1,14 @@
+Usage: opensession tail|follow [options]
+
+Poll and print new events from a session
+
+Options:
+  --session-id <sessionId>    Session id (defaults to latest known session)
+  --project-key <projectKey>  Project key used when selecting latest session
+  --project <projectKey>      Alias of --project-key
+  --limit <limit>             Number of recent events to request per poll
+                              (default: "20")
+  --interval <interval>       Polling interval in seconds (default: "2")
+  --iterations <iterations>   Number of polling rounds (0 = infinite) (default:
+                              "0")
+  -h, --help                  display help for command

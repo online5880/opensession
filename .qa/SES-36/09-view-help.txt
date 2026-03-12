@@ -1,0 +1,10 @@
+Usage: opensession view|inspect [options]
+
+Inspect a session with recent events
+
+Options:
+  --session-id <sessionId>    Session id (defaults to latest known session)
+  --project-key <projectKey>  Project key used when selecting latest session
+  --project <projectKey>      Alias of --project-key
+  --tail <tail>               Number of recent events to show (default: "20")
+  -h, --help                  display help for command
