@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OpenSession | Session continuity for teams and agents</title>
+    <meta
+      name="description"
+      content="OpenSession keeps multi-agent work sessions durable across runtime resets with a lightweight Supabase-backed event timeline."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&family=JetBrains+Mono:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --ink-950: #081218;
+        --ink-900: #10202a;
+        --ink-700: #2a4c5c;
+        --ink-500: #5d8ba1;
+        --mist-100: #f2f7fa;
+        --mist-50: #f9fcff;
+        --teal-500: #19b7a5;
+        --teal-600: #109a8b;
+        --amber-400: #ffc663;
+        --line: #d7e5ee;
+        --code-bg: #071a24;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        font-family: "Manrope", "Avenir Next", "Segoe UI", sans-serif;
+        color: var(--ink-900);
+        background:
+          radial-gradient(circle at 20% 0%, #d3edf7 0%, transparent 45%),
+          radial-gradient(circle at 95% 20%, #caefe8 0%, transparent 40%),
+          linear-gradient(180deg, #f7fbfe 0%, #f1f7fb 35%, #edf5fa 100%);
+        line-height: 1.6;
+      }
+
+      .container {
+        width: min(1100px, 92vw);
+        margin: 0 auto;
+      }
+
+      .hero {
+        padding: 72px 0 44px;
+      }
+
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        border: 1px solid #b8d6e5;
+        background: #f1fbff;
+        color: var(--ink-700);
+        border-radius: 999px;
+        font-size: 0.82rem;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        padding: 8px 14px;
+      }
+
+      h1 {
+        margin: 14px 0 12px;
+        font-size: clamp(2rem, 5vw, 3.4rem);
+        line-height: 1.08;
+        letter-spacing: -0.03em;
+      }
+
+      .hero p {
+        margin: 0;
+        max-width: 760px;
+        color: #224253;
+        font-size: clamp(1rem, 2.2vw, 1.2rem);
+      }
+
+      .cta-row {
+        margin-top: 26px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        text-decoration: none;
+        border-radius: 12px;
+        padding: 11px 16px;
+        font-weight: 800;
+        letter-spacing: 0.01em;
+        transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+      }
+
+      .btn:hover { transform: translateY(-2px); }
+
+      .btn-primary {
+        color: #03241f;
+        background: linear-gradient(90deg, #2de3cd, #8ff2b0);
+        box-shadow: 0 10px 24px rgba(34, 179, 158, 0.26);
+      }
+
+      .btn-secondary {
+        color: var(--ink-900);
+        border: 1px solid #bdd4e1;
+        background: #f7fcff;
+      }
+
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+        margin-top: 30px;
+      }
+
+      .stat {
+        border: 1px solid #c8ddeb;
+        border-radius: 14px;
+        background: #f9fdff;
+        padding: 14px;
+      }
+
+      .stat b {
+        display: block;
+        font-size: 1.35rem;
+        line-height: 1.2;
+        color: var(--ink-950);
+      }
+
+      .section {
+        margin-top: 22px;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: linear-gradient(180deg, #fcfeff 0%, #f4f9fd 100%);
+        box-shadow: 0 16px 32px rgba(18, 54, 73, 0.08);
+      }
+
+      .section .inner { padding: 24px; }
+
+      .section h2 {
+        margin: 0 0 12px;
+        font-size: clamp(1.45rem, 3vw, 2rem);
+        letter-spacing: -0.02em;
+      }
+
+      .features {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .feature {
+        border: 1px solid #cfe0ea;
+        border-radius: 14px;
+        background: #ffffff;
+        padding: 14px;
+      }
+
+      .feature h3 {
+        margin: 0 0 6px;
+        font-size: 1.08rem;
+      }
+
+      code,
+      pre,
+      .mono {
+        font-family: "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+      }
+
+      .code {
+        margin: 0;
+        border-radius: 14px;
+        background: linear-gradient(180deg, #0b2230 0%, #061922 100%);
+        color: #daf3ff;
+        border: 1px solid #113042;
+        padding: 14px;
+        overflow-x: auto;
+        font-size: 0.87rem;
+        line-height: 1.7;
+      }
+
+      .docs-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+      }
+
+      .panel {
+        border: 1px solid #cfe0ea;
+        border-radius: 14px;
+        background: #ffffff;
+        padding: 14px;
+      }
+
+      .panel h3 {
+        margin: 0 0 10px;
+        font-size: 1.03rem;
+      }
+
+      ul {
+        margin: 0;
+        padding-left: 19px;
+      }
+
+      li + li { margin-top: 6px; }
+
+      footer {
+        margin: 26px 0 52px;
+        color: #365c6e;
+        font-size: 0.92rem;
+        text-align: center;
+      }
+
+      @media (max-width: 840px) {
+        .stats,
+        .features,
+        .docs-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .hero {
+          padding-top: 52px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="hero container">
+      <span class="tag">OpenSession • single URL landing + docs</span>
+      <h1>Session continuity for agent teams that ship every day.</h1>
+      <p>
+        OpenSession gives your team a durable run timeline with CLI-first workflows, read-only web visibility,
+        and an ops TUI for fast recovery when runtime sessions reset.
+      </p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="https://www.npmjs.com/package/@online5880/opensession" target="_blank" rel="noreferrer">Install from npm</a>
+        <a class="btn btn-secondary" href="https://github.com/online5880/opensession" target="_blank" rel="noreferrer">View GitHub Repo</a>
+      </div>
+      <div class="stats">
+        <div class="stat"><b>2-minute setup</b><span>Connect Supabase and start tracking sessions immediately.</span></div>
+        <div class="stat"><b>CLI + Web + TUI</b><span>Run operations in terminal while keeping an always-on viewer.</span></div>
+        <div class="stat"><b>Built for resilience</b><span>Recover context quickly after crashes, restarts, and host changes.</span></div>
+      </div>
+    </header>
+
+    <main class="container">
+      <section class="section" id="features">
+        <div class="inner">
+          <h2>Feature Highlights</h2>
+          <div class="features">
+            <article class="feature">
+              <h3>Durable session timeline</h3>
+              <p>Store session and event history in Supabase tables so actors can resume work with minimal context loss.</p>
+            </article>
+            <article class="feature">
+              <h3>Read-only monitoring view</h3>
+              <p>Expose project/sessions/events with filtering and tail controls for board-level visibility without write risk.</p>
+            </article>
+            <article class="feature">
+              <h3>Keyboard-first ops console</h3>
+              <p>Use terminal shortcuts for refresh, session switching, and quick event-tail analysis during active operations.</p>
+            </article>
+            <article class="feature">
+              <h3>Webhook ingestion + automation</h3>
+              <p>Receive external events and forward matched triggers to ChatOps/webhooks for escalation and alerting.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="docs">
+        <div class="inner">
+          <h2>Docs</h2>
+          <p>Single-page docs bundle for quick onboarding and production operations.</p>
+
+          <h3>Quickstart</h3>
+          <pre class="code">npx @online5880/opensession init
+npx @online5880/opensession sync --project demo
+npx @online5880/opensession start --project-key demo --actor mane
+npx @online5880/opensession status --project-key demo
+npx @online5880/opensession log --limit 50
+npx @online5880/opensession ops --project-key demo</pre>
+
+          <div class="docs-grid" style="margin-top: 12px;">
+            <article class="panel">
+              <h3>Commands</h3>
+              <ul>
+                <li><span class="mono">init</span>: validate config + Supabase connectivity</li>
+                <li><span class="mono">sync --project demo</span>: sync local/remote state</li>
+                <li><span class="mono">start --project-key demo --actor mane</span>: open a live session</li>
+                <li><span class="mono">resume --session-id &lt;id&gt; --actor mane</span>: resume prior session</li>
+                <li><span class="mono">viewer --host 127.0.0.1 --port 5880</span>: run web viewer</li>
+                <li><span class="mono">report --project-key demo --json</span>: KPI + trend report</li>
+              </ul>
+            </article>
+
+            <article class="panel">
+              <h3>Troubleshooting</h3>
+              <ul>
+                <li><b>PGRST205 (table not found)</b>: apply schema SQL once, then rerun <span class="mono">init</span> and <span class="mono">sync</span>.</li>
+                <li><b>Missing project key</b>: run <span class="mono">sync --project demo</span> or pass <span class="mono">--project-key demo</span>.</li>
+                <li><b>Auth/network errors</b>: confirm Supabase URL format and publishable key prefix.</li>
+                <li><b>No active sessions in viewer</b>: verify latest run used the same project key and actor scope.</li>
+              </ul>
+            </article>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="container">
+      OpenSession makes session continuity predictable for multi-agent engineering workflows.
+    </footer>
+  </body>
+</html>
