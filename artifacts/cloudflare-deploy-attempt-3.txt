@@ -1,0 +1,31 @@
+[2026-03-12T14:42:36Z] wrangler whoami
+npm warn Unknown env config "auto-install-peers". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown env config "recursive". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+
+ ⛅️ wrangler 4.72.0
+───────────────────
+Getting User settings...
+👋 You are logged in with an Account API Token, associated with the account Gjtjqkr5880@gmail.com's Account.
+ℹ️  The API Token is read from the CLOUDFLARE_API_TOKEN environment variable.
+┌─────────────────────────────────┬──────────────────────────────────┐
+│ Account Name                    │ Account ID                       │
+├─────────────────────────────────┼──────────────────────────────────┤
+│ Gjtjqkr5880@gmail.com's Account │ 8f2b2bd9564017f1fa76e5f7ba180ea8 │
+└─────────────────────────────────┴──────────────────────────────────┘
+🔓 To see token permissions visit https://dash.cloudflare.com/8f2b2bd9564017f1fa76e5f7ba180ea8/api-tokens.
+
+[2026-03-12T14:42:38Z] wrangler pages deploy
+npm warn Unknown env config "auto-install-peers". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown env config "recursive". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+
+ ⛅️ wrangler 4.72.0
+───────────────────
+
+[31m✘ [41;31m[[41;97mERROR[41;31m][0m [1mA request to the Cloudflare API (/memberships) failed.[0m
+
+  Authentication failed (status: 400) [code: 9106]
+  
+  If you think this is a bug, please open an issue at: [4mhttps://github.com/cloudflare/workers-sdk/issues/new/choose[0m
+
+
+🪵  Logs were written to "/Users/mane/Library/Preferences/.wrangler/logs/wrangler-2026-03-12_14-42-40_191.log"

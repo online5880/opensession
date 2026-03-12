@@ -99,6 +99,12 @@ npx @online5880/opensession ops --project-key demo
 - Supabase URL: `https://<project-ref>.supabase.co`
 - Supabase key: `sb_publishable_...`
 
+### Live URLs / Package
+
+- Landing + docs URL: `https://online5880.github.io/opensession/`
+- npm package: `@online5880/opensession`
+- Current package version in this repo: `0.1.2`
+
 ## CLI Command Surface
 
 - `init`: initialize local config + verify connection
