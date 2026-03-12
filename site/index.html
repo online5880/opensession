@@ -3,10 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>OpenSession | Session continuity for teams and agents</title>
+    <title>OpenSession | Execution continuity layer for coding teams</title>
     <meta
       name="description"
-      content="OpenSession keeps multi-agent work sessions durable across runtime resets with a lightweight Supabase-backed event timeline."
+      content="OpenSession is an execution continuity layer for coding teams: durable run timeline, CLI-first operations, and resilient handoff across interruptions."
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -233,10 +233,10 @@
   <body>
     <header class="hero container">
       <span class="tag">OpenSession • single URL landing + docs</span>
-      <h1>Session continuity for agent teams that ship every day.</h1>
+      <h1>Execution continuity for coding teams that ship every day.</h1>
       <p>
         OpenSession gives your team a durable run timeline with CLI-first workflows, read-only web visibility,
-        and an ops TUI for fast recovery when runtime sessions reset.
+        and an ops TUI for fast recovery when sessions reset, ownership changes, or terminals crash.
       </p>
       <div class="cta-row">
         <a class="btn btn-primary" href="https://www.npmjs.com/package/@online5880/opensession" target="_blank" rel="noreferrer">Install from npm</a>
@@ -278,6 +278,26 @@
         <div class="inner">
           <h2>Docs</h2>
           <p>Single-page docs bundle for quick onboarding and production operations.</p>
+
+          <h3>MVP-20 implementation flow</h3>
+          <div class="docs-grid" style="margin-bottom: 12px;">
+            <article class="panel">
+              <h3>Execution loop</h3>
+              <ul>
+                <li><b>1. Bootstrap</b>: run <span class="mono">init</span> and validate Supabase schema.</li>
+                <li><b>2. Scope</b>: run <span class="mono">sync --project demo</span> to anchor project context.</li>
+                <li><b>3. Execute</b>: open with <span class="mono">start</span> or recover with <span class="mono">resume</span>.</li>
+                <li><b>4. Operate</b>: drive continuity via <span class="mono">status</span>, <span class="mono">log</span>, <span class="mono">ops</span>, and <span class="mono">report</span>.</li>
+              </ul>
+            </article>
+            <article class="panel">
+              <h3>Delivery target</h3>
+              <p>
+                Any teammate should be able to continue a workstream with the same project key and actor metadata,
+                preserving the full intent-&gt;action-&gt;artifact chain.
+              </p>
+            </article>
+          </div>
 
           <h3>Quickstart</h3>
           <pre class="code">npx @online5880/opensession init

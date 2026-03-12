@@ -1,12 +1,12 @@
 # OpenSession
 
-OpenSession is an **Agent Execution Continuity OS** for teams running AI-assisted delivery.
+OpenSession is an **Execution Continuity Layer** for teams shipping with coding agents.
 
-It gives operators one continuity layer across CLI, automation, and lightweight web/TUI views so work does not fragment when sessions, terminals, or contributors change.
+It gives operators one continuity system across CLI, automation, and lightweight web/TUI views so delivery does not fragment when sessions, terminals, or contributors change.
 
-## Positioning
+## Product Messaging
 
-OpenSession is built for one specific problem: **execution continuity under interruption**.
+OpenSession is designed for one specific outcome: **ship continuously even when runtime context breaks**.
 
 When teams run coding agents and humans together, context breaks in predictable places:
 - shell sessions die,
@@ -14,7 +14,18 @@ When teams run coding agents and humans together, context breaks in predictable 
 - updates are spread across chat/tools,
 - handoffs lose the exact action chain.
 
-OpenSession keeps execution state and event history in Supabase and exposes that state through a simple CLI-first operator surface.
+OpenSession stores execution state and event history in Supabase, then exposes it through a CLI-first operator surface for fast resume and clean handoff.
+
+## MVP-20 Implementation Flow
+
+This is the default execution loop used for MVP rollout and team operations:
+
+1. Bootstrap continuity layer: run `init`, connect Supabase, verify schema.
+2. Establish project scope: run `sync --project <key>` and confirm linkage.
+3. Open or resume active execution: `start` for new runs, `resume` for interrupted runs.
+4. Operate with visibility: use `status`, `log`, `ops`, and `report` to manage handoff and throughput.
+
+Delivery objective: each workstream should be executable by any teammate with the same project key and actor metadata, without losing intent->action->artifact history.
 
 ## Who This Is For
 
