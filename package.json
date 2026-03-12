@@ -1,0 +1,20 @@
+{
+  "name": "session-bridge",
+  "version": "0.1.0",
+  "description": "Session continuity bridge CLI with Supabase backend",
+  "type": "module",
+  "bin": {
+    "session-bridge": "src/cli.js"
+  },
+  "scripts": {
+    "start": "node src/cli.js",
+    "lint": "sh -c 'for f in src/*.js; do node --check \"$f\"; done'"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.52.1",
+    "commander": "^14.0.1"
+  }
+}
