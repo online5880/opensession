@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OpenSession | Continuous Execution Layer</title>
+    <meta
+      name="description"
+      content="OpenSession helps coding teams preserve execution context across terminals, restarts, and handoffs."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&family=JetBrains+Mono:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #06080d;
+        --bg-soft: #0b1018;
+        --panel: #0f1622;
+        --panel-2: #121c2a;
+        --line: #223042;
+        --text: #f5f8ff;
+        --text-soft: #9fb2cc;
+        --brand: #6fd3ff;
+        --brand-2: #76ffca;
+        --accent: #ffd47e;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        color: var(--text);
+        background:
+          radial-gradient(circle at 15% 0%, rgba(66, 126, 255, 0.22), transparent 45%),
+          radial-gradient(circle at 85% 15%, rgba(51, 220, 175, 0.14), transparent 38%),
+          linear-gradient(180deg, #06080d 0%, #080d15 40%, #06080d 100%);
+        font-family: "Manrope", "Avenir Next", "Segoe UI", sans-serif;
+        line-height: 1.6;
+      }
+
+      .container {
+        width: min(1180px, 92vw);
+        margin: 0 auto;
+      }
+
+      .fade-up {
+        opacity: 0;
+        transform: translateY(22px);
+        transition: opacity 0.55s ease, transform 0.55s ease;
+      }
+
+      .fade-up.visible {
+        opacity: 1;
+        transform: translateY(0);
+      }
+
+      header {
+        min-height: 86vh;
+        display: grid;
+        place-items: center;
+        text-align: center;
+        padding: 72px 0 24px;
+      }
+
+      .pill {
+        display: inline-flex;
+        border: 1px solid #2a3b52;
+        background: rgba(14, 24, 38, 0.78);
+        border-radius: 999px;
+        padding: 8px 14px;
+        font-size: 0.82rem;
+        font-weight: 700;
+        color: #bad0ea;
+        letter-spacing: 0.02em;
+      }
+
+      h1 {
+        margin: 18px 0 12px;
+        font-size: clamp(2.15rem, 5.8vw, 4.45rem);
+        line-height: 1.03;
+        letter-spacing: -0.03em;
+      }
+
+      .hero-sub {
+        margin: 0 auto;
+        max-width: 760px;
+        color: var(--text-soft);
+        font-size: clamp(1rem, 2.1vw, 1.18rem);
+      }
+
+      .cta-row {
+        margin-top: 26px;
+        display: flex;
+        gap: 12px;
+        justify-content: center;
+        flex-wrap: wrap;
+      }
+
+      .btn {
+        text-decoration: none;
+        border-radius: 999px;
+        padding: 12px 18px;
+        font-weight: 800;
+        letter-spacing: 0.01em;
+        transition: transform 0.2s ease, filter 0.2s ease;
+      }
+
+      .btn:hover {
+        transform: translateY(-2px);
+        filter: brightness(1.08);
+      }
+
+      .btn-primary {
+        color: #041012;
+        background: linear-gradient(95deg, var(--brand), var(--brand-2));
+      }
+
+      .btn-secondary {
+        color: var(--text);
+        border: 1px solid #34445d;
+        background: #111a28;
+      }
+
+      .metric-strip {
+        margin-top: 34px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: linear-gradient(180deg, rgba(16, 25, 38, 0.8), rgba(10, 16, 26, 0.9));
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        overflow: hidden;
+      }
+
+      .metric {
+        padding: 16px;
+        border-right: 1px solid #223246;
+      }
+
+      .metric:last-child { border-right: none; }
+
+      .metric b {
+        display: block;
+        font-size: 1.4rem;
+        letter-spacing: -0.02em;
+      }
+
+      .metric span {
+        color: #9fb3cf;
+        font-size: 0.92rem;
+      }
+
+      section {
+        padding: 34px 0;
+      }
+
+      .section-title {
+        margin: 0 0 12px;
+        font-size: clamp(1.5rem, 3.5vw, 2.2rem);
+        letter-spacing: -0.02em;
+      }
+
+      .section-sub {
+        margin: 0 0 16px;
+        color: var(--text-soft);
+        max-width: 820px;
+      }
+
+      .cards {
+        display: grid;
+        gap: 14px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .card {
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: linear-gradient(180deg, var(--panel), var(--panel-2));
+        padding: 16px;
+      }
+
+      .card h3 {
+        margin: 0 0 7px;
+        font-size: 1.08rem;
+      }
+
+      .card p {
+        margin: 0;
+        color: #a6bad4;
+      }
+
+      .architecture {
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: linear-gradient(180deg, #0d131f, #0a0f18);
+        padding: 16px;
+      }
+
+      .layers {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .layer {
+        border: 1px solid #29405a;
+        border-radius: 12px;
+        background: rgba(12, 21, 33, 0.9);
+        padding: 14px;
+      }
+
+      .layer small {
+        color: var(--accent);
+        letter-spacing: 0.04em;
+        font-weight: 700;
+      }
+
+      .timeline {
+        border-left: 2px solid #325075;
+        margin-left: 8px;
+        padding-left: 18px;
+      }
+
+      .event {
+        position: relative;
+        margin-bottom: 16px;
+      }
+
+      .event::before {
+        content: "";
+        position: absolute;
+        left: -25px;
+        top: 7px;
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: linear-gradient(90deg, var(--brand), var(--brand-2));
+      }
+
+      .event b { display: block; }
+      .event span { color: var(--text-soft); }
+
+      code, pre, .mono {
+        font-family: "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+      }
+
+      .setup {
+        display: grid;
+        gap: 14px;
+        grid-template-columns: 1fr 1.2fr;
+      }
+
+      .setup-copy {
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: #0f1724;
+        padding: 16px;
+      }
+
+      .setup-copy h3 { margin-top: 0; }
+
+      .code-panel {
+        margin: 0;
+        border: 1px solid #223a56;
+        border-radius: 14px;
+        background: linear-gradient(180deg, #0a111b, #070d16);
+        color: #d7ebff;
+        padding: 16px;
+        overflow-x: auto;
+        font-size: 0.88rem;
+        line-height: 1.7;
+      }
+
+      .footer {
+        margin: 30px auto 54px;
+        border-top: 1px solid #1d2d42;
+        padding-top: 18px;
+        color: #7f99b8;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      @media (max-width: 900px) {
+        .metric-strip,
+        .cards,
+        .layers,
+        .setup {
+          grid-template-columns: 1fr;
+        }
+
+        .metric {
+          border-right: none;
+          border-bottom: 1px solid #223246;
+        }
+
+        .metric:last-child { border-bottom: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="container">
+      <div class="fade-up">
+        <span class="pill">OpenSession • Landing + Docs</span>
+        <h1>Ship without losing context when sessions reset.</h1>
+        <p class="hero-sub">
+          OpenSession gives engineering teams a durable execution timeline, CLI-first control surface,
+          and reliable handoff continuity across terminals, crashes, and actor transitions.
+        </p>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="https://www.npmjs.com/package/@online5880/opensession" target="_blank" rel="noreferrer">Install from npm</a>
+          <a class="btn btn-secondary" href="https://github.com/online5880/opensession" target="_blank" rel="noreferrer">View GitHub</a>
+        </div>
+
+        <div class="metric-strip">
+          <div class="metric"><b>2 min</b><span>to first tracked run</span></div>
+          <div class="metric"><b>CLI + Web + TUI</b><span>one operational surface</span></div>
+          <div class="metric"><b>Session-safe</b><span>handoffs with continuity</span></div>
+          <div class="metric"><b>Supabase-backed</b><span>durable event history</span></div>
+        </div>
+      </div>
+    </header>
+
+    <main class="container">
+      <section class="fade-up" id="features">
+        <h2 class="section-title">Card-Based Feature Sections</h2>
+        <p class="section-sub">
+          Built for operators who need stable context under pressure, not just chat logs.
+        </p>
+        <div class="cards">
+          <article class="card">
+            <h3>Durable Session Timeline</h3>
+            <p>Persist intent, actions, and artifacts so a new actor can resume fast without reconstructing context.</p>
+          </article>
+          <article class="card">
+            <h3>Read-Only Web Visibility</h3>
+            <p>Expose project/session/event state safely for leads and stakeholders without mutation risk.</p>
+          </article>
+          <article class="card">
+            <h3>Keyboard-First Ops</h3>
+            <p>Operate with focused terminal commands for status, logs, tailing, and quick recovery loops.</p>
+          </article>
+          <article class="card">
+            <h3>Automation Hooks</h3>
+            <p>Route selected events to webhooks and downstream systems for alerting and execution governance.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="fade-up" id="architecture">
+        <h2 class="section-title">Architecture / Layer Block</h2>
+        <div class="architecture">
+          <div class="layers">
+            <article class="layer">
+              <small>LAYER 1</small>
+              <h3>CLI Runtime</h3>
+              <p>Init, sync, start, resume, status, log, ops, and report command set.</p>
+            </article>
+            <article class="layer">
+              <small>LAYER 2</small>
+              <h3>Persistence + API</h3>
+              <p>Supabase tables and API channels preserve sessions/events for continuity.</p>
+            </article>
+            <article class="layer">
+              <small>LAYER 3</small>
+              <h3>Viewer + Ops UI</h3>
+              <p>Read-only dashboard and operator console for monitoring and handoff confidence.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="fade-up" id="changelog">
+        <h2 class="section-title">Changelog / What's New</h2>
+        <div class="timeline">
+          <article class="event">
+            <b>MVP-20 flow stabilized</b>
+            <span>Unified onboarding from init to report in a single execution loop.</span>
+          </article>
+          <article class="event">
+            <b>Single-page landing + docs</b>
+            <span>Quickstart, commands, and troubleshooting now bundled on one URL.</span>
+          </article>
+          <article class="event">
+            <b>Fallback publish path</b>
+            <span>GitHub Pages kept active while Cloudflare auth chain is being unblocked.</span>
+          </article>
+        </div>
+      </section>
+
+      <section class="fade-up" id="setup">
+        <h2 class="section-title">One-Command Setup Block</h2>
+        <div class="setup">
+          <article class="setup-copy">
+            <h3>Quickstart</h3>
+            <p class="section-sub" style="margin-bottom: 0;">
+              Start from zero and get a resilient project timeline in minutes.
+            </p>
+          </article>
+          <pre class="code-panel">npx @online5880/opensession init
+npx @online5880/opensession sync --project demo
+npx @online5880/opensession start --project-key demo --actor mane
+npx @online5880/opensession status --project-key demo
+npx @online5880/opensession log --limit 50
+npx @online5880/opensession ops --project-key demo</pre>
+        </div>
+      </section>
+    </main>
+
+    <footer class="container footer fade-up">
+      <span>OpenSession • Execution continuity layer for coding teams</span>
+      <span class="mono">npm: @online5880/opensession</span>
+    </footer>
+
+    <script>
+      const observer = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            if (entry.isIntersecting) {
+              entry.target.classList.add("visible");
+              observer.unobserve(entry.target);
+            }
+          }
+        },
+        { threshold: 0.15 }
+      );
+
+      document.querySelectorAll(".fade-up").forEach((el) => observer.observe(el));
+    </script>
+  </body>
+</html>
