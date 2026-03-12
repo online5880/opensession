@@ -177,3 +177,17 @@ Current focus:
 - bootstrap reliability
 - docs and operator UX polish
 
+
+
+## Short Alias (recommended)
+
+```bash
+alias opss='npx -y @online5880/opensession'
+opss init
+opss sync --project demo
+opss start --project-key demo --actor mane
+opss status --project-key demo
+opss log
+```
+
+When published with the `opss` bin, you can also use `npx opss ...` directly.
