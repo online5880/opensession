@@ -1,4 +1,4 @@
-# opensession
+# @online5880/opensession
 
 MVP CLI for session continuity with Supabase.
 
@@ -22,3 +22,9 @@ node src/cli.js log
 ```
 
 Apply `sql/schema.sql` in Supabase SQL editor before using the CLI.
+
+## npx 실행
+
+```bash
+npx @online5880/opensession init
+```
