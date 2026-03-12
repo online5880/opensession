@@ -6,6 +6,7 @@ It helps you:
 - start and resume work sessions across environments,
 - keep a durable event timeline in Supabase,
 - inspect progress via CLI (and viewer/TUI as they mature),
+- inspect progress via CLI, read-only WebUI, and keyboard-driven ops TUI,
 - avoid losing context when runtime/session changes.
 
 ---
@@ -23,6 +24,7 @@ npx @online5880/opensession sync --project demo
 npx @online5880/opensession start --project-key demo --actor mane
 npx @online5880/opensession status --project-key demo
 npx @online5880/opensession log
+npx @online5880/opensession ops --project-key demo
 ```
 
 `init` will ask for:
@@ -87,6 +89,26 @@ Run read-only web viewer locally.
 
 ```bash
 npx @online5880/opensession viewer --host 127.0.0.1 --port 5880
+
+Viewer query controls:
+- `sessionStatus=all|active|ended`
+- `actor=<substring>`
+- `tail=<1..500>`
+- `refresh=<0..60>`
+
+### `ops`
+Run terminal ops console (TUI) with shortcuts.
+
+```bash
+npx @online5880/opensession ops --project-key demo --refresh-ms 5000 --limit 50
+```
+
+Shortcuts:
+- `j` / `k`: move selected session
+- `r`: refresh now
+- `l`: cycle event tail limit (`20 -> 50 -> 100 -> 200`)
+- `a`: toggle active-only/all sessions
+- `q`: quit
 ```
 
 ### `webhook-server`
@@ -174,6 +196,7 @@ Fix:
 - Prefer small, frequent commits and push often.
 - Keep updates reproducible: include command and output snippets.
 - For remote demo links in this environment, share Tailscale URL (not localhost).
+- Fast aliases: `st(start)`, `rs(resume)`, `ps(status)`, `lg(log)`, `sy(sync)`, `vw(viewer)`.
 
 ---
 

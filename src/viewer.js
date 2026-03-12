@@ -32,6 +32,17 @@ a.item.active { background: #e5edff; }
 .events-header { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
 .events-meta { font-size: 12px; color: #6b7280; padding-right: 12px; }
 .trend-table td, .trend-table th { font-size: 12px; }
+.controls { padding: 10px 12px; display: grid; gap: 8px; }
+.controls-grid { display: grid; grid-template-columns: repeat(2, minmax(140px, 1fr)); gap: 8px; }
+.controls label { display: grid; gap: 4px; font-size: 12px; color: #374151; }
+.controls input, .controls select { height: 32px; border: 1px solid #d1d5db; border-radius: 6px; padding: 0 8px; font-size: 13px; }
+.controls-actions { display: flex; gap: 8px; }
+.controls .button { display: inline-flex; align-items: center; justify-content: center; border: 1px solid #111827; color: #f9fafb; background: #111827; border-radius: 6px; font-size: 12px; height: 30px; padding: 0 10px; text-decoration: none; }
+.controls .button.secondary { color: #111827; background: #fff; border-color: #d1d5db; }
+.mini-list { margin: 0; padding: 0; list-style: none; }
+.mini-list li { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; padding: 8px 12px; border-bottom: 1px solid #f1f5f9; }
+.mini-list li:last-child { border-bottom: 0; }
+.mini-list code { font-size: 11px; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
 th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
 th { background: #f9fafb; position: sticky; top: 0; }
@@ -95,11 +106,48 @@ function toIntegerInRange(raw, fallback, min, max) {
   return value;
 }
 
+function normalizeStatusFilter(raw) {
+  const value = String(raw ?? '').trim().toLowerCase();
+  if (value === 'active' || value === 'ended') {
+    return value;
+  }
+  return 'all';
+}
+
+function normalizeActorFilter(raw) {
+  const value = String(raw ?? '').trim();
+  return value.slice(0, 64);
+}
+
+function aggregateEventsByType(events) {
+  const counts = new Map();
+  for (const event of events) {
+    const key = String(event.type ?? 'unknown');
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([type, count]) => ({ type, count }));
+}
+
+function aggregateSessionsByActor(sessions) {
+  const counts = new Map();
+  for (const session of sessions) {
+    const key = String(session.actor ?? 'unknown');
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 8)
+    .map(([actor, count]) => ({ actor, count }));
+}
+
 function renderApp({
   configPath,
   projects,
   selectedProjectId,
   sessions,
+  filteredSessions,
   selectedSessionId,
   selectedSession,
   events,
@@ -107,6 +155,8 @@ function renderApp({
   projectTrend,
   tailLimit,
   refreshSeconds,
+  sessionStatusFilter,
+  actorFilter,
   loadError
 }) {
   const projectItems = projects
@@ -117,16 +167,19 @@ function renderApp({
     })
     .join('');
 
-  const sessionItems = sessions
+  const sessionItems = filteredSessions
     .map((session) => {
       const active = session.id === selectedSessionId ? ' active' : '';
-      const href = `/?projectId=${encodeURIComponent(selectedProjectId)}&sessionId=${encodeURIComponent(session.id)}`;
+      const href = `/?projectId=${encodeURIComponent(selectedProjectId)}&sessionId=${encodeURIComponent(session.id)}&tail=${tailLimit}&refresh=${refreshSeconds}&sessionStatus=${encodeURIComponent(sessionStatusFilter)}&actor=${encodeURIComponent(actorFilter)}`;
       return `<li><a class="item${active}" href="${href}"><strong>${escapeHtml(session.actor)}</strong><span class="meta">${escapeHtml(session.id)} | ${escapeHtml(session.status)} | ${escapeHtml(session.started_at)}</span></a></li>`;
     })
     .join('');
 
   const activeSessions = sessions.filter((session) => session.status === 'active').length;
+  const endedSessions = sessions.filter((session) => session.status === 'ended').length;
   const latestEventAt = events.length > 0 ? events[events.length - 1].created_at : '-';
+  const eventTypeBreakdown = aggregateEventsByType(events);
+  const topActors = aggregateSessionsByActor(sessions);
   const eventRows = events
     .map(
       (event) =>
@@ -139,6 +192,19 @@ function renderApp({
       ? `<meta http-equiv="refresh" content="${refreshSeconds}" />`
       : '';
   const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? null;
+  const statusLabel = sessionStatusFilter === 'all' ? 'All statuses' : sessionStatusFilter;
+  const actorLabel = actorFilter || 'All actors';
+  const controlsProjectId = selectedProjectId ? `<input type="hidden" name="projectId" value="${escapeHtml(selectedProjectId)}" />` : '';
+  const eventBreakdownItems =
+    eventTypeBreakdown.length === 0
+      ? '<li><span>No events</span><span>0</span></li>'
+      : eventTypeBreakdown
+          .map((row) => `<li><span><code>${escapeHtml(row.type)}</code></span><span>${row.count}</span></li>`)
+          .join('');
+  const actorItems =
+    topActors.length === 0
+      ? '<li><span>No sessions</span><span>0</span></li>'
+      : topActors.map((row) => `<li><span>${escapeHtml(row.actor)}</span><span>${row.count}</span></li>`).join('');
 
   return `<!doctype html>
 <html lang="en">
@@ -164,9 +230,9 @@ function renderApp({
         <h2>Projects (${projects.length})</h2>
         ${projects.length === 0 ? '<div class="panel-empty">No projects found.</div>' : `<ul>${projectItems}</ul>`}
       </section>
-      <section>
-        <h2>Sessions (${sessions.length})</h2>
-        ${sessions.length === 0 ? '<div class="panel-empty">Select a project to view sessions.</div>' : `<ul>${sessionItems}</ul>`}
+        <section>
+          <h2>Sessions (${filteredSessions.length}/${sessions.length})</h2>
+          ${filteredSessions.length === 0 ? '<div class="panel-empty">No sessions match current filter.</div>' : `<ul>${sessionItems}</ul>`}
       </section>
       <div class="content-col">
         <section>
@@ -175,9 +241,14 @@ function renderApp({
             <div class="summary-card"><span class="label">Projects</span><span class="value">${projects.length}</span></div>
             <div class="summary-card"><span class="label">Project Sessions</span><span class="value">${sessions.length}</span></div>
             <div class="summary-card"><span class="label">Active Sessions</span><span class="value">${projectKpis?.activeSessions ?? activeSessions}</span></div>
+            <div class="summary-card"><span class="label">Ended Sessions</span><span class="value">${endedSessions}</span></div>
             <div class="summary-card"><span class="label">28d Events</span><span class="value">${projectKpis?.totalEvents ?? 0}</span></div>
             <div class="summary-card"><span class="label">28d Actors</span><span class="value">${projectKpis?.uniqueActors ?? 0}</span></div>
             <div class="summary-card"><span class="label">Events / Session</span><span class="value">${(projectKpis?.eventsPerSession ?? 0).toFixed(2)}</span></div>
+            <div class="summary-card"><span class="label">Tail Events</span><span class="value">${events.length}</span></div>
+            <div class="summary-card"><span class="label">Status Filter</span><span class="value">${escapeHtml(statusLabel)}</span></div>
+            <div class="summary-card"><span class="label">Actor Filter</span><span class="value">${escapeHtml(actorLabel)}</span></div>
+            <div class="summary-card"><span class="label">Top Event Type</span><span class="value">${escapeHtml(eventTypeBreakdown[0]?.type ?? '-')}</span></div>
           </div>
         </section>
         <section>
@@ -194,6 +265,34 @@ function renderApp({
           }
         </section>
         <section>
+          <h2>Viewer Controls</h2>
+          <form class="controls" method="get" action="/">
+            ${controlsProjectId}
+            <div class="controls-grid">
+              <label>Session status
+                <select name="sessionStatus">
+                  <option value="all"${sessionStatusFilter === 'all' ? ' selected' : ''}>all</option>
+                  <option value="active"${sessionStatusFilter === 'active' ? ' selected' : ''}>active</option>
+                  <option value="ended"${sessionStatusFilter === 'ended' ? ' selected' : ''}>ended</option>
+                </select>
+              </label>
+              <label>Actor contains
+                <input name="actor" value="${escapeHtml(actorFilter)}" placeholder="mane" />
+              </label>
+              <label>Tail events
+                <input name="tail" value="${tailLimit}" />
+              </label>
+              <label>Refresh seconds
+                <input name="refresh" value="${refreshSeconds}" />
+              </label>
+            </div>
+            <div class="controls-actions">
+              <button class="button" type="submit">Apply</button>
+              <a class="button secondary" href="/?projectId=${encodeURIComponent(selectedProjectId ?? '')}">Reset</a>
+            </div>
+          </form>
+        </section>
+        <section>
           <h2>Session Details</h2>
           ${
             selectedSession
@@ -208,6 +307,14 @@ function renderApp({
             </div>`
               : '<div class="panel-empty">Select a session to view details.</div>'
           }
+        </section>
+        <section>
+          <h2>Event Type Breakdown</h2>
+          <ul class="mini-list">${eventBreakdownItems}</ul>
+        </section>
+        <section>
+          <h2>Actor Session Distribution</h2>
+          <ul class="mini-list">${actorItems}</ul>
         </section>
         <section>
           <h2 class="events-header"><span>Events Tail</span><span class="events-meta">${escapeHtml(refreshMeta)} | tail=${tailLimit}</span></h2>
@@ -304,13 +411,25 @@ export async function startViewerServer({ host, port }) {
         }
       }
       const sessionIdFromQuery = url.searchParams.get('sessionId');
-      const selectedSessionId = sessions.some((item) => item.id === sessionIdFromQuery)
-        ? sessionIdFromQuery
-        : sessions[0]?.id ?? null;
-
-      selectedSession = sessions.find((session) => session.id === selectedSessionId) ?? null;
       const tailLimit = toIntegerInRange(url.searchParams.get('tail'), 200, 1, 500);
       const refreshSeconds = toIntegerInRange(url.searchParams.get('refresh'), 0, 0, 60);
+      const sessionStatusFilter = normalizeStatusFilter(url.searchParams.get('sessionStatus'));
+      const actorFilter = normalizeActorFilter(url.searchParams.get('actor'));
+      const actorFilterNeedle = actorFilter.toLowerCase();
+      const filteredSessions = sessions.filter((session) => {
+        if (sessionStatusFilter !== 'all' && session.status !== sessionStatusFilter) {
+          return false;
+        }
+        if (actorFilterNeedle && !String(session.actor ?? '').toLowerCase().includes(actorFilterNeedle)) {
+          return false;
+        }
+        return true;
+      });
+      const selectedSessionId = filteredSessions.some((item) => item.id === sessionIdFromQuery)
+        ? sessionIdFromQuery
+        : filteredSessions[0]?.id ?? null;
+
+      selectedSession = filteredSessions.find((session) => session.id === selectedSessionId) ?? null;
 
       if (selectedSessionId && !loadError) {
         try {
@@ -327,6 +446,7 @@ export async function startViewerServer({ host, port }) {
         projects,
         selectedProjectId,
         sessions,
+        filteredSessions,
         selectedSessionId,
         selectedSession,
         events,
@@ -334,6 +454,8 @@ export async function startViewerServer({ host, port }) {
         projectTrend,
         tailLimit,
         refreshSeconds,
+        sessionStatusFilter,
+        actorFilter,
         loadError
       });
       sendHtml(res, 200, body);
