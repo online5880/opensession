@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 
-const CONFIG_DIR = path.join(os.homedir(), '.session-bridge');
+const CONFIG_DIR = path.join(os.homedir(), '.opensession');
 const CONFIG_PATH = path.join(CONFIG_DIR, 'config.json');
 
 export async function readConfig() {

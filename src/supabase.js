@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 
 export function getClient(config) {
   if (!config.supabaseUrl || !config.supabaseAnonKey) {
-    throw new Error('Supabase is not configured. Run `session-bridge init --url <url> --anon-key <key>`.');
+    throw new Error('Supabase is not configured. Run `opensession init --url <url> --anon-key <key>`.');
   }
 
   return createClient(config.supabaseUrl, config.supabaseAnonKey, {

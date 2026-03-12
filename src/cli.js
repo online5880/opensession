@@ -15,7 +15,7 @@ import { getConfigPath, mergeConfig, readConfig, writeConfig } from './config.js
 const program = new Command();
 
 program
-  .name('session-bridge')
+  .name('opensession')
   .description('Session continuity bridge CLI for Supabase')
   .version('0.1.0');
 

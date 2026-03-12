@@ -1,4 +1,4 @@
-# session-bridge
+# opensession
 
 MVP CLI for session continuity with Supabase.
 
