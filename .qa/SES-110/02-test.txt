@@ -1,0 +1,20 @@
+npm warn Unknown env config "auto-install-peers". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown env config "recursive". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+
+> @online5880/opensession@0.1.2 test
+> node --test test/*.test.js
+
+✔ reserveResumeOperation persists generated id for retry and restart safety (0.7235ms)
+✔ releaseResumeOperation clears pending key and next reservation gets new id (0.071458ms)
+✔ explicit operation id is stored and reused as provided (0.044667ms)
+✔ appendEvent writes idempotency_key with payload idempotencyKey (0.87725ms)
+✔ appendEvent returns existing row after unique violation conflict (0.600125ms)
+✔ appendEvent throws original conflict when existing row cannot be loaded (0.17475ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 69.448917

@@ -9,7 +9,8 @@
   },
   "scripts": {
     "start": "node src/cli.js",
-    "lint": "sh -c 'for f in src/*.js; do node --check \"$f\"; done'"
+    "lint": "sh -c 'for f in src/*.js; do node --check \"$f\"; done'",
+    "test": "node --test test/*.test.js"
   },
   "engines": {
     "node": ">=18"

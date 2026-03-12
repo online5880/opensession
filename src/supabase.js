@@ -30,6 +30,15 @@ function shouldRetry(error) {
   return false;
 }
 
+function isUniqueViolation(error) {
+  if (!error) {
+    return false;
+  }
+  const code = String(error.code ?? '').toUpperCase();
+  const status = Number(error.status ?? error.statusCode ?? 0);
+  return code === '23505' || status === 409;
+}
+
 async function withRetry(taskName, fn, attempts = DEFAULT_RETRY_ATTEMPTS) {
   let attempt = 0;
   let lastError = null;
@@ -129,41 +138,50 @@ export async function startSession(client, projectId, actor, options = {}) {
 }
 
 export async function appendEvent(client, sessionId, type, payload = {}, options = {}) {
-  const idempotencyKey = options.idempotencyKey ?? null;
-  if (idempotencyKey) {
-    const { data: existing, error: findError } = await withRetry('appendEvent.findExisting', () =>
-      client
-        .from('session_events')
-        .select('id,session_id,type,payload,created_at')
-        .eq('session_id', sessionId)
-        .eq('type', type)
-        .eq('payload->>idempotencyKey', idempotencyKey)
-        .limit(1)
-        .maybeSingle()
-    );
-
-    if (findError) {
-      throw findError;
-    }
-    if (existing) {
-      return existing;
-    }
-  }
-
-  const nextPayload = idempotencyKey ? { ...payload, idempotencyKey } : payload;
+  const normalizedIdempotencyKey = typeof options.idempotencyKey === 'string' && options.idempotencyKey.trim().length > 0
+    ? options.idempotencyKey.trim()
+    : null;
+  const nextPayload = normalizedIdempotencyKey ? { ...payload, idempotencyKey: normalizedIdempotencyKey } : payload;
   const { data, error } = await withRetry('appendEvent.insert', () =>
     client
       .from('session_events')
-      .insert({ session_id: sessionId, type, payload: nextPayload })
+      .insert({
+        session_id: sessionId,
+        type,
+        idempotency_key: normalizedIdempotencyKey,
+        payload: nextPayload
+      })
       .select('id,session_id,type,payload,created_at')
       .single()
   );
 
-  if (error) {
+  if (!error) {
+    return data;
+  }
+
+  if (!normalizedIdempotencyKey || !isUniqueViolation(error)) {
     throw error;
   }
 
-  return data;
+  const { data: existing, error: findError } = await withRetry('appendEvent.findExistingAfterConflict', () =>
+    client
+      .from('session_events')
+      .select('id,session_id,type,payload,created_at')
+      .eq('session_id', sessionId)
+      .eq('type', type)
+      .eq('idempotency_key', normalizedIdempotencyKey)
+      .limit(1)
+      .maybeSingle()
+  );
+
+  if (findError) {
+    throw findError;
+  }
+  if (!existing) {
+    throw error;
+  }
+
+  return existing;
 }
 
 export async function validateConnection(supabaseUrl, supabaseAnonKey) {

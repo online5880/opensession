@@ -1,0 +1,8 @@
+Usage: opensession init|setup [options]
+
+Initialize CLI config with interactive prompt
+
+Options:
+  --project-key <projectKey>  Default project key
+  --actor <actor>             Default actor/username
+  -h, --help                  display help for command

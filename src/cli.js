@@ -24,6 +24,7 @@ import {
   validateConnection
 } from './supabase.js';
 import { getConfigPath, mergeConfig, readConfig, writeConfig } from './config.js';
+import { releaseResumeOperation, reserveResumeOperation } from './idempotency.js';
 import { computeKpis, computeWeeklyTrend, formatSignedDelta } from './metrics.js';
 import { startViewerServer } from './viewer.js';
 
@@ -71,13 +72,44 @@ function formatError(error) {
   return String(error);
 }
 
-async function readInitSecrets() {
+function maskSecret(value, { keepStart = 4, keepEnd = 4 } = {}) {
+  const text = typeof value === 'string' ? value.trim() : '';
+  if (!text) {
+    return '(empty)';
+  }
+  if (text.length <= keepStart + keepEnd) {
+    return '*'.repeat(text.length);
+  }
+  const start = text.slice(0, keepStart);
+  const end = text.slice(-keepEnd);
+  return `${start}${'*'.repeat(text.length - keepStart - keepEnd)}${end}`;
+}
+
+async function readInitWizardInputs(current, options) {
   if (input.isTTY) {
     const rl = createInterface({ input, output });
+    const existingProjectKey = typeof current?.defaultProjectKey === 'string' ? current.defaultProjectKey.trim() : '';
+    const existingActor = typeof current?.actor === 'string' ? current.actor.trim() : '';
+
     const url = (await rl.question('Supabase URL을 입력하세요: ')).trim();
     const anonKey = (await rl.question('Supabase ANON KEY를 입력하세요: ')).trim();
+
+    let projectKey = typeof options.projectKey === 'string' ? options.projectKey.trim() : '';
+    if (!projectKey) {
+      const defaultProjectLabel = existingProjectKey ? ` (기본 ${existingProjectKey})` : '';
+      const projectAnswer = (await rl.question(`기본 project key (선택사항)${defaultProjectLabel}: `)).trim();
+      projectKey = projectAnswer || existingProjectKey;
+    }
+
+    let actor = typeof options.actor === 'string' ? options.actor.trim() : '';
+    if (!actor) {
+      const defaultActorLabel = existingActor ? ` (기본 ${existingActor})` : '';
+      const actorAnswer = (await rl.question(`기본 actor (선택사항)${defaultActorLabel}: `)).trim();
+      actor = actorAnswer || existingActor;
+    }
+
     rl.close();
-    return { url, anonKey };
+    return { url, anonKey, projectKey, actor };
   }
 
   const raw = await readFile('/dev/stdin', 'utf8');
@@ -87,7 +119,9 @@ async function readInitSecrets() {
     .filter((line) => line.length > 0);
   return {
     url: lines[0] ?? '',
-    anonKey: lines[1] ?? ''
+    anonKey: lines[1] ?? '',
+    projectKey: typeof options.projectKey === 'string' ? options.projectKey.trim() : '',
+    actor: typeof options.actor === 'string' ? options.actor.trim() : ''
   };
 }
 
@@ -573,22 +607,26 @@ program
   .option('--project-key <projectKey>', 'Default project key')
   .option('--actor <actor>', 'Default actor/username')
   .action(async (options) => {
-    const { url, anonKey } = await readInitSecrets();
+    const current = await readConfig();
+    const { url, anonKey, projectKey, actor } = await readInitWizardInputs(current, options);
 
     if (!url || !anonKey) {
       throw new Error('Supabase URL과 ANON KEY는 필수입니다.');
     }
 
-    const current = await readConfig();
     const next = mergeConfig(current, {
       supabaseUrl: url,
       supabaseAnonKey: anonKey,
-      defaultProjectKey: options.projectKey ?? current.defaultProjectKey,
-      actor: options.actor ?? current.actor
+      defaultProjectKey: projectKey || current.defaultProjectKey,
+      actor: actor || current.actor
     });
 
-    const path = await writeConfig(next);
-    console.log(`설정 저장 완료: ${path}`);
+    const configPath = await writeConfig(next);
+    console.log(`설정 저장 완료: ${configPath}`);
+    console.log(`- Supabase URL: ${next.supabaseUrl}`);
+    console.log(`- Supabase ANON KEY: ${maskSecret(next.supabaseAnonKey)}`);
+    console.log(`- Default project key: ${next.defaultProjectKey ?? '(not set)'}`);
+    console.log(`- Actor: ${next.actor ?? '(not set)'}`);
     try {
       await validateConnection(url, anonKey);
       console.log('연결 검증: 성공');
@@ -651,19 +689,27 @@ program
   .description('Resume an existing session by emitting a resumed event')
   .requiredOption('--session-id <sessionId>', 'Session id to resume')
   .option('--actor <actor>', 'Actor override')
+  .option('--operation-id <operationId>', 'Stable idempotency key for resume')
   .action(async (options) => {
-    const config = await readConfig();
+    let config = await readConfig();
     const client = getClient(config);
     const actor = options.actor ?? config.actor ?? 'anonymous';
-    const operationId = randomUUID();
     const session = await getSession(client, options.sessionId);
 
     if (!session) {
       throw new Error(`Session not found: ${options.sessionId}`);
     }
 
-    const event = await appendEvent(client, session.id, 'resumed', { actor }, { idempotencyKey: operationId });
-    await writeConfig(mergeConfig(config, { lastSessionId: session.id }));
+    const reservation = reserveResumeOperation(config, session.id, actor, options.operationId);
+    config = reservation.nextConfig;
+    await writeConfig(config);
+
+    const event = await appendEvent(client, session.id, 'resumed', { actor }, { idempotencyKey: reservation.operationId });
+    const postResumeConfig = mergeConfig(
+      releaseResumeOperation(config, session.id, actor),
+      { lastSessionId: session.id }
+    );
+    await writeConfig(postResumeConfig);
 
     console.log(`Session resumed: ${session.id}`);
     console.log(`Event: ${event.id}`);
