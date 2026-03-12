@@ -1,0 +1,19 @@
+$ node src/cli.js viewer --host 127.0.0.1 --port 5880
+
+$ curl -i http://127.0.0.1:5880/health
+HTTP/1.1 200 OK
+Content-Type: application/json; charset=utf-8
+Content-Length: 30
+Date: Thu, 12 Mar 2026 13:49:40 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+
+{"ok":true,"mode":"read-only"}
+$ curl -I http://127.0.0.1:5880/
+HTTP/1.1 200 OK
+Content-Type: text/html; charset=utf-8
+Content-Length: 5708
+Date: Thu, 12 Mar 2026 13:49:42 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+

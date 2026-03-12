@@ -3,12 +3,13 @@
 import { Command } from 'commander';
 import { createInterface } from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
+import { spawn } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   appendEvent,
-  bootstrapSchemaWithManagementApi,
   ensureProject,
   getClient,
   getSession,
@@ -18,8 +19,29 @@ import {
   validateConnection
 } from './supabase.js';
 import { getConfigPath, mergeConfig, readConfig, writeConfig } from './config.js';
+import { startViewerServer } from './viewer.js';
 
 const program = new Command();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const SCHEMA_SQL_PATH = path.resolve(__dirname, '../sql/schema.sql');
+const PACKAGE_JSON_PATH = path.resolve(__dirname, '../package.json');
+
+let packageMetadata = {
+  name: '@online5880/opensession',
+  version: '0.0.0'
+};
+
+try {
+  const raw = readFileSync(PACKAGE_JSON_PATH, 'utf8');
+  const parsed = JSON.parse(raw);
+  packageMetadata = {
+    name: typeof parsed.name === 'string' ? parsed.name : packageMetadata.name,
+    version: typeof parsed.version === 'string' ? parsed.version : packageMetadata.version
+  };
+} catch {
+  // Fall back to defaults when package metadata is unavailable.
+}
 
 function formatError(error) {
   if (error instanceof Error) {
@@ -43,34 +65,6 @@ function formatError(error) {
   return String(error);
 }
 
-function extractProjectRef(supabaseUrl) {
-  try {
-    const host = new URL(supabaseUrl).hostname;
-    const first = host.split('.')[0];
-    return first || '';
-  } catch {
-    return '';
-  }
-}
-
-function isSchemaMissingError(error) {
-  if (!error || typeof error !== 'object') {
-    return false;
-  }
-  return error.code === 'PGRST205' || String(error.message ?? '').includes('PGRST205');
-}
-
-async function promptLine(question, defaultValue = '') {
-  if (!input.isTTY) {
-    return defaultValue;
-  }
-  const rl = createInterface({ input, output });
-  const suffix = defaultValue ? ` [${defaultValue}]` : '';
-  const answer = (await rl.question(`${question}${suffix}: `)).trim();
-  rl.close();
-  return answer || defaultValue;
-}
-
 async function readInitSecrets() {
   if (input.isTTY) {
     const rl = createInterface({ input, output });
@@ -91,10 +85,225 @@ async function readInitSecrets() {
   };
 }
 
+function inferProjectRefFromSupabaseUrl(url) {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname ?? '';
+    if (!host.endsWith('.supabase.co')) {
+      return null;
+    }
+    const [ref] = host.split('.');
+    return ref?.trim() ? ref : null;
+  } catch {
+    return null;
+  }
+}
+
+function isSchemaMissingError(error) {
+  if (!error) {
+    return false;
+  }
+  const code = String(error.code ?? '').toUpperCase();
+  const message = String(error.message ?? '').toLowerCase();
+  const details = String(error.details ?? '').toLowerCase();
+  const hint = String(error.hint ?? '').toLowerCase();
+  const serialized = formatError(error).toLowerCase();
+  if (code === 'PGRST205') {
+    return true;
+  }
+  const haystack = `${message} ${details} ${hint} ${serialized}`;
+  if (haystack.includes('pgrst205')) {
+    return true;
+  }
+  if (haystack.includes("could not find the table 'public.projects' in the schema cache")) {
+    return true;
+  }
+  return haystack.includes('relation') && haystack.includes('projects');
+}
+
+async function applySchemaWithManagementApi({ token, projectRef }) {
+  const sql = await readFile(SCHEMA_SQL_PATH, 'utf8');
+  const response = await fetch(`https://api.supabase.com/v1/projects/${projectRef}/database/query`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ query: sql })
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Management API request failed (${response.status}): ${body.slice(0, 400)}`);
+  }
+}
+
+async function handleSchemaBootstrapFlow(url, anonKey, validationError) {
+  const message = formatError(validationError);
+  console.log(`연결 검증: 실패 (${message})`);
+  console.log('원인: Supabase 테이블이 아직 생성되지 않았습니다 (PGRST205 감지).');
+  console.log('Bootstrap 옵션을 선택하세요:');
+  console.log('  [A] Supabase Management API로 schema.sql 자동 적용');
+  console.log('  [B] 수동 적용 명령 출력 후 재검증');
+
+  const inferredRef = inferProjectRefFromSupabaseUrl(url);
+  if (!input.isTTY) {
+    const tokenFromEnv = process.env.SUPABASE_MANAGEMENT_TOKEN?.trim();
+    const projectRefFromEnv = process.env.SUPABASE_PROJECT_REF?.trim();
+    const projectRef = projectRefFromEnv || inferredRef;
+
+    if (tokenFromEnv && projectRef) {
+      console.log(`비대화형 자동 bootstrap 실행 중... projectRef=${projectRef}`);
+      try {
+        await applySchemaWithManagementApi({ token: tokenFromEnv, projectRef });
+      } catch (applyError) {
+        const applyMessage = formatError(applyError);
+        console.log(`자동 bootstrap: 실패 (${applyMessage})`);
+        console.log(`schema.sql 경로: ${SCHEMA_SQL_PATH}`);
+        return false;
+      }
+
+      try {
+        await validateConnection(url, anonKey);
+        console.log('연결 재검증: 성공');
+        return true;
+      } catch (retryError) {
+        const retryMessage = formatError(retryError);
+        console.log(`연결 재검증: 실패 (${retryMessage})`);
+        return false;
+      }
+    }
+
+    console.log('비대화형 모드에서는 SUPABASE_MANAGEMENT_TOKEN/SUPABASE_PROJECT_REF 설정 시 자동 bootstrap을 시도합니다.');
+    console.log(`schema.sql 경로: ${SCHEMA_SQL_PATH}`);
+    if (inferredRef) {
+      console.log(
+        `one-step command: psql \"postgresql://postgres:<DB_PASSWORD>@db.${inferredRef}.supabase.co:5432/postgres\" -f \"${SCHEMA_SQL_PATH}\"`
+      );
+    }
+    return false;
+  }
+
+  const rl = createInterface({ input, output });
+  try {
+    const rawChoice = (await rl.question('선택 (A/B, 기본 B): ')).trim().toUpperCase();
+    const choice = rawChoice === 'A' ? 'A' : 'B';
+
+    if (choice === 'A') {
+      const token = (await rl.question('Supabase Management API token (sbp_...): ')).trim();
+      const defaultRef = inferredRef ?? '';
+      const refPrompt = defaultRef
+        ? `Project ref (기본 ${defaultRef}): `
+        : 'Project ref (예: abcdefghijklmno): ';
+      const projectRefInput = (await rl.question(refPrompt)).trim();
+      const projectRef = projectRefInput || defaultRef;
+
+      if (!token || !projectRef) {
+        throw new Error('Option A requires both Management API token and project ref.');
+      }
+
+      console.log(`자동 bootstrap 실행 중... projectRef=${projectRef}`);
+      await applySchemaWithManagementApi({ token, projectRef });
+      console.log('자동 bootstrap: 성공');
+    } else {
+      const refLabel = inferredRef ? inferredRef : '<PROJECT_REF>';
+      console.log(`schema.sql 경로: ${SCHEMA_SQL_PATH}`);
+      console.log(
+        `one-step command: psql \"postgresql://postgres:<DB_PASSWORD>@db.${refLabel}.supabase.co:5432/postgres\" -f \"${SCHEMA_SQL_PATH}\"`
+      );
+      await rl.question('수동 적용 완료 후 Enter를 누르면 재검증합니다: ');
+    }
+  } finally {
+    rl.close();
+  }
+
+  try {
+    await validateConnection(url, anonKey);
+    console.log('연결 재검증: 성공');
+    return true;
+  } catch (retryError) {
+    const retryMessage = formatError(retryError);
+    console.log(`연결 재검증: 실패 (${retryMessage})`);
+    return false;
+  }
+}
+
+function parseSemver(version) {
+  const normalized = String(version ?? '').trim().replace(/^v/i, '');
+  const [core] = normalized.split('-');
+  const parts = core.split('.');
+  if (parts.length < 1 || parts.length > 3) {
+    return null;
+  }
+
+  const numbers = [0, 0, 0];
+  for (let i = 0; i < Math.min(parts.length, 3); i += 1) {
+    const value = Number.parseInt(parts[i], 10);
+    if (!Number.isInteger(value) || value < 0) {
+      return null;
+    }
+    numbers[i] = value;
+  }
+  return numbers;
+}
+
+function compareSemver(left, right) {
+  const l = parseSemver(left);
+  const r = parseSemver(right);
+  if (!l || !r) {
+    return 0;
+  }
+
+  for (let i = 0; i < 3; i += 1) {
+    if (l[i] > r[i]) {
+      return 1;
+    }
+    if (l[i] < r[i]) {
+      return -1;
+    }
+  }
+  return 0;
+}
+
+async function fetchLatestVersionFromNpm(packageName) {
+  const response = await fetch(`https://registry.npmjs.org/${encodeURIComponent(packageName)}`, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(5000)
+  });
+
+  if (!response.ok) {
+    throw new Error(`npm registry request failed (${response.status})`);
+  }
+
+  const data = await response.json();
+  const latest = data?.['dist-tags']?.latest;
+  if (!latest || typeof latest !== 'string') {
+    throw new Error('Could not resolve latest version from npm registry');
+  }
+  return latest;
+}
+
+async function runNpmGlobalUpdate(packageName) {
+  await new Promise((resolve, reject) => {
+    const child = spawn('npm', ['install', '-g', `${packageName}@latest`], {
+      stdio: 'inherit'
+    });
+
+    child.once('error', reject);
+    child.once('exit', (code) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      reject(new Error(`npm install exited with code ${code ?? 'unknown'}`));
+    });
+  });
+}
+
 program
   .name('opensession')
   .description('Session continuity bridge CLI for Supabase')
-  .version('0.1.0');
+  .version(packageMetadata.version);
 
 program
   .command('init')
@@ -116,57 +325,21 @@ program
       actor: options.actor ?? current.actor
     });
 
-    const configPath = await writeConfig(next);
-    console.log(`설정 저장 완료: ${configPath}`);
+    const path = await writeConfig(next);
+    console.log(`설정 저장 완료: ${path}`);
     try {
       await validateConnection(url, anonKey);
-      console.log('Connection validation: PASS');
+      console.log('연결 검증: 성공');
     } catch (error) {
-      const message = formatError(error);
-      console.log(`Connection validation: FAIL (${message})`);
-
       if (isSchemaMissingError(error)) {
-        const schemaPath = fileURLToPath(new URL('../sql/schema.sql', import.meta.url));
-        const schemaSql = await readFile(schemaPath, 'utf8');
-        console.log('Detected missing schema (PGRST205).');
-
-        const mode = (await promptLine('Choose bootstrap option: [A]uto API / [B] command output', 'B'))
-          .toUpperCase()
-          .trim();
-
-        if (mode === 'A') {
-          const defaultProjectRef = extractProjectRef(url);
-          const managementToken = await promptLine('Supabase Management API token');
-          const projectRef = await promptLine('Supabase project ref', defaultProjectRef);
-
-          if (!managementToken || !projectRef) {
-            console.log('Bootstrap skipped: missing management token or project ref.');
-            process.exitCode = 1;
-            return;
-          }
-
-          try {
-            await bootstrapSchemaWithManagementApi(managementToken, projectRef, schemaSql);
-            console.log('Bootstrap via Management API: PASS');
-            await validateConnection(url, anonKey);
-            console.log('Post-bootstrap validation retry: PASS');
-            return;
-          } catch (bootstrapError) {
-            console.log(`Bootstrap via Management API: FAIL (${formatError(bootstrapError)})`);
-            process.exitCode = 1;
-            return;
-          }
+        const recovered = await handleSchemaBootstrapFlow(url, anonKey, error);
+        if (!recovered) {
+          process.exitCode = 1;
         }
-
-        const sqlPath = path.resolve(schemaPath);
-        console.log('Bootstrap via command output (Option B):');
-        console.log(`SQL file path: ${sqlPath}`);
-        console.log('Next command (replace placeholders):');
-        console.log(
-          `curl -sS -X POST \"https://api.supabase.com/v1/projects/<project-ref>/database/query\" -H \"Authorization: Bearer <management-token>\" -H \"apikey: <management-token>\" -H \"Content-Type: application/json\" --data @<(jq -Rs '{query: .}' ${sqlPath})`
-        );
+        return;
       }
-
+      const message = formatError(error);
+      console.log(`연결 검증: 실패 (${message})`);
       process.exitCode = 1;
     }
   });
@@ -234,10 +407,32 @@ program
   .command('status')
   .description('Show active sessions and latest sync status')
   .option('--project-key <projectKey>', 'Project key (defaults to configured project key)')
+  .option('--project <projectKey>', 'Alias of --project-key')
   .action(async (options) => {
+    const currentVersion = packageMetadata.version;
+    let latestVersion = '-';
+    let versionState = 'unknown';
+
+    try {
+      const latest = await fetchLatestVersionFromNpm(packageMetadata.name);
+      latestVersion = latest;
+      const compare = compareSemver(currentVersion, latest);
+      if (compare >= 0) {
+        versionState = 'up-to-date';
+      } else {
+        versionState = 'update-available';
+      }
+    } catch (error) {
+      versionState = `check-failed (${formatError(error)})`;
+    }
+
     const config = await readConfig();
-    const projectKey = options.projectKey ?? config.defaultProjectKey ?? config.syncStatus?.project;
+    const projectKey = options.project ?? options.projectKey ?? config.defaultProjectKey ?? config.syncStatus?.project;
     const syncStatus = config.syncStatus ?? {};
+
+    console.log(`CLI version: ${currentVersion}`);
+    console.log(`Latest version: ${latestVersion}`);
+    console.log(`Version status: ${versionState}`);
 
     if (!projectKey) {
       throw new Error('Missing project key. Pass --project-key, sync --project, or run start first.');
@@ -269,6 +464,58 @@ program
     for (const session of active) {
       console.log(`- ${session.id} | actor=${session.actor} | started=${session.started_at}`);
     }
+  });
+
+program
+  .command('self-update')
+  .description('Check for updates and optionally install the latest global version')
+  .option('--check', 'Check only, do not install')
+  .action(async (options) => {
+    const packageName = packageMetadata.name;
+    const currentVersion = packageMetadata.version;
+    const latestVersion = await fetchLatestVersionFromNpm(packageName);
+    const compare = compareSemver(currentVersion, latestVersion);
+
+    console.log(`Package: ${packageName}`);
+    console.log(`Current version: ${currentVersion}`);
+    console.log(`Latest version: ${latestVersion}`);
+
+    if (compare >= 0) {
+      console.log('Already up to date.');
+      return;
+    }
+
+    if (options.check) {
+      console.log('Update available. Run `opensession self-update` to install globally.');
+      return;
+    }
+
+    console.log(`Installing ${packageName}@latest globally...`);
+    await runNpmGlobalUpdate(packageName);
+    console.log('Self-update complete.');
+  });
+
+program
+  .command('viewer')
+  .description('Run read-only web viewer for projects/sessions/events')
+  .option('--host <host>', 'Host to bind', '127.0.0.1')
+  .option('--port <port>', 'Port to bind', '8787')
+  .action(async (options) => {
+    const host = String(options.host ?? '127.0.0.1');
+    const port = Number.parseInt(String(options.port ?? '8787'), 10);
+    if (!Number.isInteger(port) || port <= 0 || port > 65535) {
+      throw new Error('Invalid port. Use a number between 1 and 65535.');
+    }
+
+    const { server, url } = await startViewerServer({ host, port });
+    console.log(`Read-only viewer running at ${url}`);
+    console.log('Press Ctrl+C to stop.');
+
+    process.once('SIGINT', () => {
+      server.close(() => {
+        process.exit(0);
+      });
+    });
   });
 
 program

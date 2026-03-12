@@ -84,23 +84,6 @@ export async function validateConnection(supabaseUrl, supabaseAnonKey) {
   }
 }
 
-export async function bootstrapSchemaWithManagementApi(managementToken, projectRef, schemaSql) {
-  const response = await fetch(`https://api.supabase.com/v1/projects/${projectRef}/database/query`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${managementToken}`,
-      apikey: managementToken,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({ query: schemaSql })
-  });
-
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Management API bootstrap failed (${response.status}): ${text}`);
-  }
-}
-
 export async function getSession(client, sessionId) {
   const { data, error } = await client
     .from('sessions')
@@ -130,12 +113,42 @@ export async function listActiveSessions(client, projectId) {
   return data;
 }
 
-export async function getSessionEvents(client, sessionId, limit = 50) {
+export async function getSessionEvents(client, sessionId, limit = 50, options = {}) {
+  const ascending = options.ascending !== false;
   const { data, error } = await client
     .from('session_events')
     .select('id,session_id,type,payload,created_at')
     .eq('session_id', sessionId)
-    .order('created_at', { ascending: true })
+    .order('created_at', { ascending })
+    .limit(limit);
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+}
+
+export async function listProjects(client, limit = 50) {
+  const { data, error } = await client
+    .from('projects')
+    .select('id,project_key,name,created_at')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+}
+
+export async function listSessions(client, projectId, limit = 100) {
+  const { data, error } = await client
+    .from('sessions')
+    .select('id,project_id,actor,status,started_at,ended_at')
+    .eq('project_id', projectId)
+    .order('started_at', { ascending: false })
     .limit(limit);
 
   if (error) {
