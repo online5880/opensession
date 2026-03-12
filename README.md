@@ -4,7 +4,7 @@ MVP CLI for session continuity with Supabase.
 
 ## Commands
 
-- `init [--project-key] [--actor]` (프롬프트로 URL/ANON KEY 입력)
+- `init [--project-key] [--actor]` (interactive URL + publishable key prompt)
 - `login --actor`
 - `start --project-key [--project-name] [--actor]`
 - `resume --session-id [--actor]`
@@ -23,9 +23,18 @@ node src/cli.js status
 node src/cli.js log
 ```
 
-Apply `sql/schema.sql` in Supabase SQL editor before using the CLI.
+## Schema bootstrap
 
-## npx 실행
+`opensession init` validates the connection immediately after saving credentials.
+
+- If schema exists: validation passes and setup is complete.
+- If schema is missing (`PGRST205`): CLI offers bootstrap options.
+1. Option A: provide Supabase Management API token + project ref for automatic schema apply.
+2. Option B: print exact one-step command and SQL file path (`sql/schema.sql`) for manual apply.
+
+After Option A bootstrap, connection validation is retried automatically.
+
+## npx
 
 ```bash
 npx @online5880/opensession init

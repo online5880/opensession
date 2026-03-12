@@ -4,8 +4,11 @@ import { Command } from 'commander';
 import { createInterface } from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   appendEvent,
+  bootstrapSchemaWithManagementApi,
   ensureProject,
   getClient,
   getSession,
@@ -38,6 +41,34 @@ function formatError(error) {
     }
   }
   return String(error);
+}
+
+function extractProjectRef(supabaseUrl) {
+  try {
+    const host = new URL(supabaseUrl).hostname;
+    const first = host.split('.')[0];
+    return first || '';
+  } catch {
+    return '';
+  }
+}
+
+function isSchemaMissingError(error) {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+  return error.code === 'PGRST205' || String(error.message ?? '').includes('PGRST205');
+}
+
+async function promptLine(question, defaultValue = '') {
+  if (!input.isTTY) {
+    return defaultValue;
+  }
+  const rl = createInterface({ input, output });
+  const suffix = defaultValue ? ` [${defaultValue}]` : '';
+  const answer = (await rl.question(`${question}${suffix}: `)).trim();
+  rl.close();
+  return answer || defaultValue;
 }
 
 async function readInitSecrets() {
@@ -85,14 +116,57 @@ program
       actor: options.actor ?? current.actor
     });
 
-    const path = await writeConfig(next);
-    console.log(`설정 저장 완료: ${path}`);
+    const configPath = await writeConfig(next);
+    console.log(`설정 저장 완료: ${configPath}`);
     try {
       await validateConnection(url, anonKey);
-      console.log('연결 검증: 성공');
+      console.log('Connection validation: PASS');
     } catch (error) {
       const message = formatError(error);
-      console.log(`연결 검증: 실패 (${message})`);
+      console.log(`Connection validation: FAIL (${message})`);
+
+      if (isSchemaMissingError(error)) {
+        const schemaPath = fileURLToPath(new URL('../sql/schema.sql', import.meta.url));
+        const schemaSql = await readFile(schemaPath, 'utf8');
+        console.log('Detected missing schema (PGRST205).');
+
+        const mode = (await promptLine('Choose bootstrap option: [A]uto API / [B] command output', 'B'))
+          .toUpperCase()
+          .trim();
+
+        if (mode === 'A') {
+          const defaultProjectRef = extractProjectRef(url);
+          const managementToken = await promptLine('Supabase Management API token');
+          const projectRef = await promptLine('Supabase project ref', defaultProjectRef);
+
+          if (!managementToken || !projectRef) {
+            console.log('Bootstrap skipped: missing management token or project ref.');
+            process.exitCode = 1;
+            return;
+          }
+
+          try {
+            await bootstrapSchemaWithManagementApi(managementToken, projectRef, schemaSql);
+            console.log('Bootstrap via Management API: PASS');
+            await validateConnection(url, anonKey);
+            console.log('Post-bootstrap validation retry: PASS');
+            return;
+          } catch (bootstrapError) {
+            console.log(`Bootstrap via Management API: FAIL (${formatError(bootstrapError)})`);
+            process.exitCode = 1;
+            return;
+          }
+        }
+
+        const sqlPath = path.resolve(schemaPath);
+        console.log('Bootstrap via command output (Option B):');
+        console.log(`SQL file path: ${sqlPath}`);
+        console.log('Next command (replace placeholders):');
+        console.log(
+          `curl -sS -X POST \"https://api.supabase.com/v1/projects/<project-ref>/database/query\" -H \"Authorization: Bearer <management-token>\" -H \"apikey: <management-token>\" -H \"Content-Type: application/json\" --data @<(jq -Rs '{query: .}' ${sqlPath})`
+        );
+      }
+
       process.exitCode = 1;
     }
   });

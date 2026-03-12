@@ -84,6 +84,23 @@ export async function validateConnection(supabaseUrl, supabaseAnonKey) {
   }
 }
 
+export async function bootstrapSchemaWithManagementApi(managementToken, projectRef, schemaSql) {
+  const response = await fetch(`https://api.supabase.com/v1/projects/${projectRef}/database/query`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${managementToken}`,
+      apikey: managementToken,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ query: schemaSql })
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Management API bootstrap failed (${response.status}): ${text}`);
+  }
+}
+
 export async function getSession(client, sessionId) {
   const { data, error } = await client
     .from('sessions')
