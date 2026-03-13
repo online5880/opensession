@@ -588,6 +588,23 @@ function parsePositiveInt(raw, fallback) {
   }
   return value;
 }
+async function resolveSessionIdFromOptions(options, config, client) {
+  if (options.sessionId) {
+    return options.sessionId;
+  }
+
+  if (config.lastSessionId) {
+    return config.lastSessionId;
+  }
+
+  const projectKey = options.project ?? options.projectKey ?? config.defaultProjectKey ?? config.syncStatus?.project;
+  if (!projectKey) {
+    return null;
+  }
+  const project = await ensureProject(client, projectKey, projectKey);
+  const sessions = await listSessions(client, project.id, 1);
+  return sessions[0]?.id ?? null;
+}
 
 function delay(ms) {
   return new Promise((resolve) => {
@@ -713,6 +730,55 @@ program
 
     console.log(`Session resumed: ${session.id}`);
     console.log(`Event: ${event.id}`);
+  });
+
+program
+  .command('approve')
+  .description('Approve a session by emitting an approved event')
+  .option('--session-id <sessionId>', 'Session id (defaults to last known session or latest by project)')
+  .option('--project-key <projectKey>', 'Project key used when selecting latest session')
+  .option('--project <projectKey>', 'Alias of --project-key')
+  .option('--actor <actor>', 'Actor override')
+  .option('--note <note>', 'Approval note')
+  .option('--idempotency-key <idempotencyKey>', 'Stable idempotency key for approval event')
+  .action(async (options) => {
+    const config = await readConfig();
+    const client = getClient(config);
+    const sessionId = await resolveSessionIdFromOptions(options, config, client);
+
+    if (!sessionId) {
+      throw new Error('Missing session id. Pass --session-id, --project-key, or run start/resume first.');
+    }
+
+    const session = await getSession(client, sessionId);
+    if (!session) {
+      throw new Error(`Session not found: ${sessionId}`);
+    }
+
+    const actor = options.actor ?? config.actor ?? 'operator';
+    const note = typeof options.note === 'string' && options.note.trim().length > 0
+      ? options.note.trim()
+      : 'Approved from CLI command.';
+    const idempotencyKey = options.idempotencyKey ?? `approve-${session.id}-${Date.now()}`;
+    const event = await appendEvent(
+      client,
+      session.id,
+      'approved',
+      {
+        actor,
+        note,
+        source: 'cli-approve-command'
+      },
+      { idempotencyKey }
+    );
+
+    if (session.id !== config.lastSessionId) {
+      await writeConfig(mergeConfig(config, { lastSessionId: session.id }));
+    }
+
+    console.log(`Session approved: ${session.id}`);
+    console.log(`Event: ${event.id}`);
+    console.log(`Actor: ${actor}`);
   });
 
 program

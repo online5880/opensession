@@ -30,6 +30,17 @@ test('resume command help keeps required compatibility flags', () => {
   assert.match(result.stdout, /--actor <actor>/);
 });
 
+test('approve command help keeps required compatibility flags', () => {
+  const result = runCli(['approve', '--help']);
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /--session-id <sessionId>/);
+  assert.match(result.stdout, /--project-key <projectKey>/);
+  assert.match(result.stdout, /--project <projectKey>/);
+  assert.match(result.stdout, /--actor <actor>/);
+  assert.match(result.stdout, /--note <note>/);
+  assert.match(result.stdout, /--idempotency-key <idempotencyKey>/);
+});
+
 test('status command help keeps both project-key and project alias', () => {
   const result = runCli(['status', '--help']);
   assert.equal(result.status, 0);
