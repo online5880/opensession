@@ -103,18 +103,24 @@ npm install -g @online5880/opensession
 ---
 
 ## 📖 Command Reference
-
-| Command | Alias | Description |
-| :--- | :--- | :--- |
-| `init` | `setup` | Initialize Supabase connection and local config. |
-| `start` | `st` | Create a new session and start the timeline. |
-| `resume` | `rs` | Resume an existing session with idempotency protection. |
+...
 | `tui` | - | **(New)** Launch the interactive Terminal UI dashboard. |
 | `viewer` | `vw` | Run a local read-only web viewer server. |
 | `status` | `ps` | Check CLI version and active session status. |
 | `report` | - | Generate 28-day KPI stats and weekly trend analysis. |
 
 ---
+
+## ⌨️ TUI 인터랙티브 조작법
+
+TUI 대시보드(`opss tui`)는 실시간 이벤트 모니터링을 위해 다음 조작이 필요합니다:
+
+- **세션 선택**: `[↑ / ↓]` 화살표 키로 이동 후 **`[Enter]`**를 눌러 선택하세요. 선택된 세션부터 실시간 스트리밍이 시작됩니다.
+- **새로고침**: `[R]` 키를 눌러 전체 세션 목록을 새로고침합니다.
+- **종료**: `[Q]` 또는 `[Esc]` 키를 눌러 종료합니다.
+
+---
+
 
 ## 🏗️ Architecture
 
