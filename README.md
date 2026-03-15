@@ -1,5 +1,7 @@
 # 🌐 OpenSession
 
+**[English](README.md) | [한국어](README.ko.md)**
+
 > **The Execution Continuity Layer for AI Agent Operations**
 
 [![npm version](https://img.shields.io/npm/v/@online5880/opensession.svg?style=flat-square)](https://www.npmjs.com/package/@online5880/opensession)
@@ -53,21 +55,29 @@ The biggest challenge in collaborating with AI agents is **"Context Fragmentatio
 | **Phase 2** | **WebUI Viewer** | ✅ Stable | Dark theme, KPI reports, JSON payload viewer |
 | **Phase 3** | **Interactive TUI** | ✅ Active | Real-time session switching, live event streaming |
 
----
+### Installation & Setup
 
-## 🛠️ Getting Started
+#### 1. Alias / Function Setup
+To use the `opss` shorthand, add the following to your shell profile:
 
-### Installation
-
+**macOS / Linux (Bash/Zsh):**
 ```bash
-# Global install
-npm install -g @online5880/opensession
-
-# Or use via NPX
 alias opss='npx -y @online5880/opensession'
 ```
 
-### 1-Minute Setup
+**Windows (PowerShell):**
+```powershell
+function opss { npx -y @online5880/opensession @args }
+```
+
+#### 2. Global Install (Optional)
+```bash
+npm install -g @online5880/opensession
+```
+
+---
+
+## 🚀 1-Minute Quickstart
 
 1. **Initialize**: Set up your Supabase URL and API Key.
    ```bash
