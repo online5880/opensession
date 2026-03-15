@@ -93,7 +93,7 @@ async function readInitWizardInputs(current, options) {
     const existingActor = typeof current?.actor === 'string' ? current.actor.trim() : '';
 
     const url = (await rl.question('Enter Supabase URL: ')).trim();
-    const anonKey = (await rl.question('Enter Supabase ANON KEY: ')).trim();
+    const anonKey = (await rl.question('Enter Supabase Public API Key: ')).trim();
 
     let projectKey = typeof options.projectKey === 'string' ? options.projectKey.trim() : '';
     if (!projectKey) {
