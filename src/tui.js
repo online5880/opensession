@@ -96,7 +96,7 @@ export async function startTui(client, options = {}) {
       header.setContent(` Loading sessions... `);
       screen.render();
       
-      const activeSessions = await listActiveSessions(client);
+      const activeSessions = await listActiveSessions(client, options.projectKey ?? options.project);
       sessions = activeSessions || [];
       
       sessionList.setItems(sessions.map(s => `${s.actor} (${s.id.slice(0, 8)})`));
