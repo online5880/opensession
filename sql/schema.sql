@@ -36,3 +36,15 @@ create index if not exists session_events_idempotency_idx on session_events(sess
 create unique index if not exists session_events_session_type_idempotency_key_uidx
   on session_events(session_id, type, idempotency_key)
   where idempotency_key is not null;
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE session_events;
+  END IF;
+EXCEPTION WHEN OTHERS THEN
+  -- Ignore if table is already in publication or other error
+END;
+$$;

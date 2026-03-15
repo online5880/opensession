@@ -307,3 +307,26 @@ export async function listSessions(client, projectId, limit = 100) {
 
   return data;
 }
+
+export function subscribeToSessionEvents(client, sessionId, onEvent) {
+  const channel = client.channel(`session-${sessionId}`);
+
+  channel
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'session_events',
+        filter: `session_id=eq.${sessionId}`
+      },
+      (payload) => {
+        onEvent(payload.new);
+      }
+    )
+    .subscribe();
+
+  return () => {
+    client.removeChannel(channel);
+  };
+}

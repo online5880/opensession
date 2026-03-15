@@ -559,26 +559,23 @@ async function runOpsConsole(options) {
   }
   input.on('keypress', onKeypress);
 
-  intervalHandle = setInterval(async () => {
+  const unsubscribe = subscribeToSessionEvents(client, selectedSession.id, async (event) => {
     if (closed) {
       return;
     }
     await refresh();
     redraw();
-  }, refreshMs);
+  });
 
   await new Promise((resolve) => {
     const done = () => {
+      unsubscribe();
       close();
       resolve();
     };
     input.once('end', done);
-    const poll = setInterval(() => {
-      if (closed) {
-        clearInterval(poll);
-        resolve();
-      }
-    }, 100);
+    // 폴링 제거
+    resolve();
   });
 }
 

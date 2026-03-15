@@ -1,5 +1,5 @@
 import blessed from 'blessed';
-import { listActiveSessions, getSessionEvents } from './supabase.js';
+import { listActiveSessions, getSessionEvents, subscribeToSessionEvents } from './supabase.js';
 
 export async function startTui(client, options = {}) {
   const screen = blessed.screen({
@@ -89,7 +89,7 @@ export async function startTui(client, options = {}) {
 
   let sessions = [];
   let selectedSessionId = null;
-  let refreshInterval = null;
+  let unsubscribeRealtime = null;
 
   async function refreshSessions() {
     try {
@@ -108,13 +108,11 @@ export async function startTui(client, options = {}) {
     }
   }
 
-  async function refreshEvents() {
+  async function loadInitialEvents() {
     if (!selectedSessionId) return;
 
     try {
       const events = await getSessionEvents(client, selectedSessionId);
-      const currentScroll = eventLog.childBase;
-      
       eventLog.clear();
       if (events && events.length > 0) {
         events.forEach(e => {
@@ -123,12 +121,10 @@ export async function startTui(client, options = {}) {
       } else {
         eventLog.log(' No events found for this session.');
       }
-      
-      // Maintain scroll position if needed or scroll to bottom
-      eventLog.setScroll(currentScroll);
       screen.render();
     } catch (error) {
-      eventLog.log(` Auto-refresh error: ${error.message}`);
+      eventLog.log(` Error loading events: ${error.message}`);
+      screen.render();
     }
   }
 
@@ -140,16 +136,23 @@ export async function startTui(client, options = {}) {
     eventLog.setContent(` Loading events for ${session.id}... \n`);
     screen.render();
 
-    if (refreshInterval) clearInterval(refreshInterval);
+    if (unsubscribeRealtime) {
+      unsubscribeRealtime();
+      unsubscribeRealtime = null;
+    }
     
-    await refreshEvents();
+    await loadInitialEvents();
     
-    // Set up auto-refresh every 5 seconds for the selected session
-    refreshInterval = setInterval(() => refreshEvents(), 5000);
+    // Set up Realtime subscription for the selected session
+    unsubscribeRealtime = subscribeToSessionEvents(client, selectedSessionId, (newEvent) => {
+      // Append the new event to the log instantly
+      eventLog.log(`[${new Date(newEvent.created_at).toLocaleTimeString()}] ${newEvent.type}: ${JSON.stringify(newEvent.payload)}`);
+      screen.render();
+    });
   });
 
   screen.key(['escape', 'q', 'C-c'], () => {
-    if (refreshInterval) clearInterval(refreshInterval);
+    if (unsubscribeRealtime) unsubscribeRealtime();
     process.exit(0);
   });
   screen.key(['r'], () => refreshSessions());
