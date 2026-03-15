@@ -27,6 +27,7 @@ import { getConfigPath, mergeConfig, readConfig, writeConfig } from './config.js
 import { releaseResumeOperation, reserveResumeOperation } from './idempotency.js';
 import { computeKpis, computeWeeklyTrend, formatSignedDelta } from './metrics.js';
 import { startViewerServer } from './viewer.js';
+import { startTui } from './tui.js';
 
 const program = new Command();
 const __filename = fileURLToPath(import.meta.url);
@@ -1273,6 +1274,16 @@ program
     for (const bucket of trend) {
       console.log(`${bucket.weekStart} | ${bucket.sessions} | ${bucket.uniqueActors} | ${bucket.events}`);
     }
+  });
+
+program
+  .command('tui')
+  .description('Run interactive Terminal UI (TUI) dashboard')
+  .option('--project-key <projectKey>', 'Project key')
+  .action(async (options) => {
+    const config = await readConfig();
+    const client = getClient(config);
+    await startTui(client, options);
   });
 
 program
