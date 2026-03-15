@@ -92,20 +92,20 @@ async function readInitWizardInputs(current, options) {
     const existingProjectKey = typeof current?.defaultProjectKey === 'string' ? current.defaultProjectKey.trim() : '';
     const existingActor = typeof current?.actor === 'string' ? current.actor.trim() : '';
 
-    const url = (await rl.question('Supabase URL을 입력하세요: ')).trim();
-    const anonKey = (await rl.question('Supabase ANON KEY를 입력하세요: ')).trim();
+    const url = (await rl.question('Enter Supabase URL: ')).trim();
+    const anonKey = (await rl.question('Enter Supabase ANON KEY: ')).trim();
 
     let projectKey = typeof options.projectKey === 'string' ? options.projectKey.trim() : '';
     if (!projectKey) {
-      const defaultProjectLabel = existingProjectKey ? ` (기본 ${existingProjectKey})` : '';
-      const projectAnswer = (await rl.question(`기본 project key (선택사항)${defaultProjectLabel}: `)).trim();
+      const defaultProjectLabel = existingProjectKey ? ` (default ${existingProjectKey})` : '';
+      const projectAnswer = (await rl.question(`Default project key (optional)${defaultProjectLabel}: `)).trim();
       projectKey = projectAnswer || existingProjectKey;
     }
 
     let actor = typeof options.actor === 'string' ? options.actor.trim() : '';
     if (!actor) {
-      const defaultActorLabel = existingActor ? ` (기본 ${existingActor})` : '';
-      const actorAnswer = (await rl.question(`기본 actor (선택사항)${defaultActorLabel}: `)).trim();
+      const defaultActorLabel = existingActor ? ` (default ${existingActor})` : '';
+      const actorAnswer = (await rl.question(`Default actor (optional)${defaultActorLabel}: `)).trim();
       actor = actorAnswer || existingActor;
     }
 
@@ -181,11 +181,11 @@ async function applySchemaWithManagementApi({ token, projectRef }) {
 
 async function handleSchemaBootstrapFlow(url, anonKey, validationError) {
   const message = formatError(validationError);
-  console.log(`연결 검증: 실패 (${message})`);
-  console.log('원인: Supabase 테이블이 아직 생성되지 않았습니다 (PGRST205 감지).');
-  console.log('Bootstrap 옵션을 선택하세요:');
-  console.log('  [A] Supabase Management API로 schema.sql 자동 적용');
-  console.log('  [B] 수동 적용 명령 출력 후 재검증');
+  console.log(`Connection validation: Failed (${message})`);
+  console.log('Reason: Supabase tables not found (PGRST205 detected).');
+  console.log('Choose bootstrap option:');
+  console.log('  [A] Apply schema.sql automatically via Supabase Management API');
+  console.log('  [B] Print manual instructions and re-validate');
 
   const inferredRef = inferProjectRefFromSupabaseUrl(url);
   if (!input.isTTY) {
@@ -194,29 +194,29 @@ async function handleSchemaBootstrapFlow(url, anonKey, validationError) {
     const projectRef = projectRefFromEnv || inferredRef;
 
     if (tokenFromEnv && projectRef) {
-      console.log(`비대화형 자동 bootstrap 실행 중... projectRef=${projectRef}`);
+      console.log(`Running non-interactive bootstrap... projectRef=${projectRef}`);
       try {
         await applySchemaWithManagementApi({ token: tokenFromEnv, projectRef });
       } catch (applyError) {
         const applyMessage = formatError(applyError);
-        console.log(`자동 bootstrap: 실패 (${applyMessage})`);
-        console.log(`schema.sql 경로: ${SCHEMA_SQL_PATH}`);
+        console.log(`Auto bootstrap: Failed (${applyMessage})`);
+        console.log(`schema.sql path: ${SCHEMA_SQL_PATH}`);
         return false;
       }
 
       try {
         await validateConnection(url, anonKey);
-        console.log('연결 재검증: 성공');
+        console.log('Connection re-validation: Success');
         return true;
       } catch (retryError) {
         const retryMessage = formatError(retryError);
-        console.log(`연결 재검증: 실패 (${retryMessage})`);
+        console.log(`Connection re-validation: Failed (${retryMessage})`);
         return false;
       }
     }
 
-    console.log('비대화형 모드에서는 SUPABASE_MANAGEMENT_TOKEN/SUPABASE_PROJECT_REF 설정 시 자동 bootstrap을 시도합니다.');
-    console.log(`schema.sql 경로: ${SCHEMA_SQL_PATH}`);
+    console.log('Non-interactive mode requires SUPABASE_MANAGEMENT_TOKEN/SUPABASE_PROJECT_REF for auto-bootstrap.');
+    console.log(`schema.sql path: ${SCHEMA_SQL_PATH}`);
     if (inferredRef) {
       console.log(
         `one-step command: psql \"postgresql://postgres:<DB_PASSWORD>@db.${inferredRef}.supabase.co:5432/postgres\" -f \"${SCHEMA_SQL_PATH}\"`
@@ -227,15 +227,15 @@ async function handleSchemaBootstrapFlow(url, anonKey, validationError) {
 
   const rl = createInterface({ input, output });
   try {
-    const rawChoice = (await rl.question('선택 (A/B, 기본 B): ')).trim().toUpperCase();
+    const rawChoice = (await rl.question('Choice (A/B, default B): ')).trim().toUpperCase();
     const choice = rawChoice === 'A' ? 'A' : 'B';
 
     if (choice === 'A') {
       const token = (await rl.question('Supabase Management API token (sbp_...): ')).trim();
       const defaultRef = inferredRef ?? '';
       const refPrompt = defaultRef
-        ? `Project ref (기본 ${defaultRef}): `
-        : 'Project ref (예: abcdefghijklmno): ';
+        ? `Project ref (default ${defaultRef}): `
+        : 'Project ref (e.g. abcdefghijklmno): ';
       const projectRefInput = (await rl.question(refPrompt)).trim();
       const projectRef = projectRefInput || defaultRef;
 
@@ -243,16 +243,16 @@ async function handleSchemaBootstrapFlow(url, anonKey, validationError) {
         throw new Error('Option A requires both Management API token and project ref.');
       }
 
-      console.log(`자동 bootstrap 실행 중... projectRef=${projectRef}`);
+      console.log(`Running auto-bootstrap... projectRef=${projectRef}`);
       await applySchemaWithManagementApi({ token, projectRef });
-      console.log('자동 bootstrap: 성공');
+      console.log('Auto bootstrap: Success');
     } else {
       const refLabel = inferredRef ? inferredRef : '<PROJECT_REF>';
-      console.log(`schema.sql 경로: ${SCHEMA_SQL_PATH}`);
+      console.log(`schema.sql path: ${SCHEMA_SQL_PATH}`);
       console.log(
         `one-step command: psql \"postgresql://postgres:<DB_PASSWORD>@db.${refLabel}.supabase.co:5432/postgres\" -f \"${SCHEMA_SQL_PATH}\"`
       );
-      await rl.question('수동 적용 완료 후 Enter를 누르면 재검증합니다: ');
+      await rl.question('Press Enter after applying SQL manually to re-validate: ');
     }
   } finally {
     rl.close();
@@ -260,11 +260,11 @@ async function handleSchemaBootstrapFlow(url, anonKey, validationError) {
 
   try {
     await validateConnection(url, anonKey);
-    console.log('연결 재검증: 성공');
+    console.log('Connection re-validation: Success');
     return true;
   } catch (retryError) {
     const retryMessage = formatError(retryError);
-    console.log(`연결 재검증: 실패 (${retryMessage})`);
+    console.log(`Connection re-validation: Failed (${retryMessage})`);
     return false;
   }
 }
@@ -629,7 +629,7 @@ program
     const { url, anonKey, projectKey, actor } = await readInitWizardInputs(current, options);
 
     if (!url || !anonKey) {
-      throw new Error('Supabase URL과 ANON KEY는 필수입니다.');
+      throw new Error('Supabase URL and ANON KEY are required.');
     }
 
     const next = mergeConfig(current, {
@@ -640,14 +640,14 @@ program
     });
 
     const configPath = await writeConfig(next);
-    console.log(`설정 저장 완료: ${configPath}`);
+    console.log(`Configuration saved to: ${configPath}`);
     console.log(`- Supabase URL: ${next.supabaseUrl}`);
     console.log(`- Supabase ANON KEY: ${maskSecret(next.supabaseAnonKey)}`);
     console.log(`- Default project key: ${next.defaultProjectKey ?? '(not set)'}`);
     console.log(`- Actor: ${next.actor ?? '(not set)'}`);
     try {
       await validateConnection(url, anonKey);
-      console.log('연결 검증: 성공');
+      console.log('Connection validation: Success');
     } catch (error) {
       if (isSchemaMissingError(error)) {
         const recovered = await handleSchemaBootstrapFlow(url, anonKey, error);
@@ -657,7 +657,7 @@ program
         return;
       }
       const message = formatError(error);
-      console.log(`연결 검증: 실패 (${message})`);
+      console.log(`Connection validation: Failed (${message})`);
       process.exitCode = 1;
     }
   });
@@ -1132,9 +1132,9 @@ program
         }
       });
       await writeConfig(next);
-      console.log(`동기화 완료: project=${projectKey}`);
-      console.log(`active sessions=${active.length}`);
-      console.log(`pending events=0`);
+      console.log(`Sync complete: project=${projectKey}`);
+      console.log(`Active sessions: ${active.length}`);
+      console.log(`Pending events: 0`);
     } catch (error) {
       const message = formatError(error);
       const next = mergeConfig(config, {
@@ -1146,7 +1146,7 @@ program
         }
       });
       await writeConfig(next);
-      console.log(`동기화 실패: ${message}`);
+      console.log(`Sync failed: ${message}`);
       process.exitCode = 1;
     }
   });
