@@ -98,6 +98,8 @@ function opss { npx -y @online5880/opensession @args }
 
 ## 🧪 테스트
 
+- 상세 가이드: [TESTING.md](TESTING.md) | [한국어 가이드](TESTING.ko.md)
+
 ```bash
 npm test
 npm run e2e

@@ -102,6 +102,8 @@ npm install -g @online5880/opensession
 
 ## 🧪 Testing
 
+- Detailed guide: [TESTING.md](TESTING.md) | [한국어 가이드](TESTING.ko.md)
+
 ```bash
 npm test
 npm run e2e
