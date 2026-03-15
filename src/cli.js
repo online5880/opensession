@@ -677,21 +677,28 @@ program
   .command('start')
   .alias('st')
   .description('Start a new session and emit a start event')
-  .requiredOption('--project-key <projectKey>', 'Project key')
+  .option('--project-key <projectKey>', 'Project key (defaults to configured project key)')
+  .option('--project <projectKey>', 'Alias of --project-key')
   .option('--project-name <projectName>', 'Project display name')
   .option('--actor <actor>', 'Actor override')
   .action(async (options) => {
     const config = await readConfig();
     const client = getClient(config);
+    const projectKey = options.project ?? options.projectKey ?? config.defaultProjectKey ?? config.syncStatus?.project;
+    
+    if (!projectKey) {
+      throw new Error("Missing project key. Pass --project-key or set a default via 'opss init'.");
+    }
+    
     const actor = options.actor ?? config.actor ?? 'anonymous';
     const operationId = randomUUID();
 
-    const project = await ensureProject(client, options.projectKey, options.projectName);
+    const project = await ensureProject(client, projectKey, options.projectName);
     const session = await startSession(client, project.id, actor, { operationId });
 
     await writeConfig(
       mergeConfig(config, {
-        defaultProjectKey: options.projectKey,
+        defaultProjectKey: projectKey,
         lastSessionId: session.id
       })
     );

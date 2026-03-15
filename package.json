@@ -1,6 +1,6 @@
 {
   "name": "@online5880/opensession",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Session continuity bridge CLI with Supabase backend",
   "type": "module",
   "bin": {
