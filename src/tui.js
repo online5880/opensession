@@ -88,6 +88,8 @@ export async function startTui(client, options = {}) {
   });
 
   let sessions = [];
+  let selectedSessionId = null;
+  let refreshInterval = null;
 
   async function refreshSessions() {
     try {
@@ -106,15 +108,13 @@ export async function startTui(client, options = {}) {
     }
   }
 
-  sessionList.on('select', async (item, index) => {
-    const session = sessions[index];
-    if (!session) return;
-
-    eventLog.setContent(` Loading events for ${session.id}... \n`);
-    screen.render();
+  async function refreshEvents() {
+    if (!selectedSessionId) return;
 
     try {
-      const events = await getSessionEvents(client, session.id);
+      const events = await getSessionEvents(client, selectedSessionId);
+      const currentScroll = eventLog.childBase;
+      
       eventLog.clear();
       if (events && events.length > 0) {
         events.forEach(e => {
@@ -123,13 +123,35 @@ export async function startTui(client, options = {}) {
       } else {
         eventLog.log(' No events found for this session.');
       }
+      
+      // Maintain scroll position if needed or scroll to bottom
+      eventLog.setScroll(currentScroll);
+      screen.render();
     } catch (error) {
-      eventLog.log(` Error loading events: ${error.message}`);
+      eventLog.log(` Auto-refresh error: ${error.message}`);
     }
+  }
+
+  sessionList.on('select', async (item, index) => {
+    const session = sessions[index];
+    if (!session) return;
+
+    selectedSessionId = session.id;
+    eventLog.setContent(` Loading events for ${session.id}... \n`);
     screen.render();
+
+    if (refreshInterval) clearInterval(refreshInterval);
+    
+    await refreshEvents();
+    
+    // Set up auto-refresh every 5 seconds for the selected session
+    refreshInterval = setInterval(() => refreshEvents(), 5000);
   });
 
-  screen.key(['escape', 'q', 'C-c'], () => process.exit(0));
+  screen.key(['escape', 'q', 'C-c'], () => {
+    if (refreshInterval) clearInterval(refreshInterval);
+    process.exit(0);
+  });
   screen.key(['r'], () => refreshSessions());
 
   await refreshSessions();
