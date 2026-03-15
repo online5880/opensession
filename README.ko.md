@@ -91,10 +91,20 @@ function opss { npx -y @online5880/opensession @args }
    ```
 
 4. **대시보드 실행**: 원하는 뷰어를 선택해 모니터링하세요.
-   ```bash
-   opss tui      # 터미널 대시보드 (추천)
-   opss viewer   # 웹 브라우저 뷰어
-   ```
+    ```bash
+    opss tui      # 터미널 대시보드 (추천)
+    opss viewer   # 웹 브라우저 뷰어
+    ```
+
+## 🧪 테스트
+
+```bash
+npm test
+npm run e2e
+```
+
+- `npm test`: `test/*.test.js`에 있는 단위·호환성 테스트를 실행합니다.
+- `npm run e2e`: CLI 명령어 스모크 테스트와 viewer 시작/`/health` 검증 e2e 테스트를 실행합니다.
 
 ---
 

@@ -100,6 +100,16 @@ npm install -g @online5880/opensession
    opss viewer   # Web browser viewer
    ```
 
+## 🧪 Testing
+
+```bash
+npm test
+npm run e2e
+```
+
+- `npm test`: Runs unit and compatibility tests under `test/*.test.js`.
+- `npm run e2e`: Runs end-to-end smoke tests for CLI commands and viewer startup/`/health`.
+
 ---
 
 ## 📖 Command Reference
